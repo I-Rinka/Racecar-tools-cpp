@@ -27,6 +27,7 @@ private:
     double smartOCR(const cv::Mat &frame);
     double tesseractOCR(const cv::Mat &frame);
     bool sanityCheck(double value) const;
+    double tryTrimDigits(double value) const;
 
     double m_timeInterval;
     double m_lastSpeed = -1.0;

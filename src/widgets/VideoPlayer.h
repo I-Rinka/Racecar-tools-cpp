@@ -18,16 +18,16 @@ public:
 
 private slots:
     void onMediaStatusChanged(QMediaPlayer::MediaStatus status);
+    void onPlaybackStateChanged(QMediaPlayer::PlaybackState state);
 
 private:
-    void doSeek(qint64 ms);
-
     QMediaPlayer *m_player;
     QVideoWidget *m_videoWidget;
     double m_fps = 30.0;
     bool m_playing = false;
     bool m_mediaReady = false;
-    bool m_pendingPlay = false;
+    bool m_initializing = false;
+    bool m_wantPlay = false;
     qint64 m_lastSeekMs = -1;
     qint64 m_pendingSeekMs = -1;
 };

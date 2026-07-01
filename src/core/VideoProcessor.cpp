@@ -53,6 +53,22 @@ double VideoProcessor::tesseractOCR(const cv::Mat &frame) {
 #endif
 }
 
+double VideoProcessor::tryTrimDigits(double value) const {
+    if (value <= 0) return value;
+    std::string s = std::to_string(static_cast<int>(std::round(value)));
+    if (s.size() > 3) {
+        std::string trimmed = s.substr(0, s.size() - 1);
+        double tv = std::stod(trimmed);
+        if (sanityCheck(tv)) return tv;
+    }
+    if (s.size() > 2) {
+        std::string trimmed = s.substr(1);
+        double tv = std::stod(trimmed);
+        if (sanityCheck(tv)) return tv;
+    }
+    return value;
+}
+
 double VideoProcessor::smartOCR(const cv::Mat &frame) {
     double value = tesseractOCR(frame);
     if (value > 0 && sanityCheck(value)) {
@@ -63,6 +79,15 @@ double VideoProcessor::smartOCR(const cv::Mat &frame) {
     auto [tmplValue, score] = recognizeByTemplate(m_digitCache, frame);
     if (score > 0.5 && sanityCheck(tmplValue))
         return tmplValue;
+
+    if (value > 0) {
+        double fixed = tryTrimDigits(value);
+        if (sanityCheck(fixed)) return fixed;
+    }
+    if (tmplValue > 0) {
+        double fixed = tryTrimDigits(tmplValue);
+        if (sanityCheck(fixed)) return fixed;
+    }
 
     return value > 0 ? value : tmplValue;
 }
