@@ -1,0 +1,31 @@
+name: Build macOS
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install qt@6 opencv tesseract cmake
+
+      - name: Configure
+        run: |
+          export CMAKE_PREFIX_PATH="$(brew --prefix qt@6)"
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release -j$(sysctl -n hw.ncpu)
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RacecarTools-macOS
+          path: build/RacecarTools.app
+          if-no-files-found: warn
