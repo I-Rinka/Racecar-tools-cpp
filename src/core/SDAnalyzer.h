@@ -23,6 +23,7 @@ public:
     int getIndexByDistance(double dist) const;
     void setCurrentIndexByDistance(double dist);
     void setCurrentIndexByFrame(int frameIdx);
+    void setCurrentIndexByTime(double timeSec);
     double getSpeed(double dist) const;
     double getAccel() const;
     int getCurrentFrameIndex() const;

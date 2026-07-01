@@ -72,6 +72,14 @@ void SDAnalyzer::setCurrentIndexByDistance(double dist) {
     m_currentIndex = getIndexByDistance(dist);
 }
 
+void SDAnalyzer::setCurrentIndexByTime(double timeSec) {
+    auto &ts = m_data.time_s;
+    if (ts.empty()) { m_currentIndex = 0; return; }
+    auto it = std::upper_bound(ts.begin(), ts.end(), timeSec);
+    int idx = static_cast<int>(std::distance(ts.begin(), it)) - 1;
+    m_currentIndex = std::clamp(idx, 0, m_data.size() - 1);
+}
+
 void SDAnalyzer::setCurrentIndexByFrame(int frameIdx) {
     auto &frames = m_data.frame;
     auto it = std::upper_bound(frames.begin(), frames.end(), frameIdx);

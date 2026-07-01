@@ -20,6 +20,9 @@ PlotPage::PlotPage(QWidget *parent) : QWidget(parent) {
     m_videoLayout = new QGridLayout(m_videoContainer);
     mainLayout->addWidget(m_videoContainer, 2);
 
+    m_syncTimer = new QTimer(this);
+    connect(m_syncTimer, &QTimer::timeout, this, &PlotPage::onSyncTick);
+
     setAcceptDrops(true);
     setFocusPolicy(Qt::StrongFocus);
 }
@@ -90,6 +93,22 @@ void PlotPage::refreshVideoLayout() {
     for (int c = 0; c < cols; ++c) m_videoLayout->setColumnStretch(c, 1);
 }
 
+void PlotPage::onSyncTick() {
+    for (size_t i = 0; i < m_videos.size() && i < m_analyzers.size(); ++i) {
+        qint64 posMs = m_videos[i]->position();
+        double fps = (i < m_videoFps.size()) ? m_videoFps[i] : 30.0;
+        int frame = static_cast<int>(posMs * fps / 1000.0);
+        m_analyzers[i]->setCurrentIndexByFrame(frame);
+    }
+    m_plot->updatePlot();
+
+    if (m_analyzers.size() >= 2) {
+        double d0 = m_analyzers[0]->getCurrentDistance();
+        double d1 = m_analyzers[1]->getCurrentDistance();
+        m_plot->showDistanceDiff(d0, d1);
+    }
+}
+
 void PlotPage::dragEnterEvent(QDragEnterEvent *event) {
     if (event->mimeData()->hasUrls())
         event->acceptProposedAction();
@@ -137,17 +156,26 @@ void PlotPage::dropEvent(QDropEvent *event) {
 }
 
 void PlotPage::keyPressEvent(QKeyEvent *event) {
-    // Space = toggle play/animation
     if (event->key() == Qt::Key_Space) {
         m_playing = !m_playing;
-        for (auto *v : m_videos) v->setPlaying(m_playing);
-        if (m_playing)
-            m_plot->startAnimation();
-        else
-            m_plot->stopAnimation();
+        if (m_playing) {
+            for (size_t i = 0; i < m_videos.size(); ++i) {
+                if (i < m_analyzers.size()) {
+                    int frame = m_analyzers[i]->getCurrentFrameIndex();
+                    double fps = i < m_videoFps.size() ? m_videoFps[i] : 30.0;
+                    qint64 ms = static_cast<qint64>(frame * 1000.0 / fps);
+                    m_videos[i]->seekToMs(ms);
+                }
+                m_videos[i]->setPlaying(true);
+            }
+            m_syncTimer->start(33);
+        } else {
+            for (auto *v : m_videos) v->setPlaying(false);
+            m_syncTimer->stop();
+            m_plot->hideDistanceDiff();
+        }
     }
 
-    // Left/Right = adjust selected curve distance by 1m
     int sel = m_plot->selectedIndex();
     if (sel >= 0 && sel < static_cast<int>(m_analyzers.size())) {
         if (event->key() == Qt::Key_Left) {
@@ -159,13 +187,10 @@ void PlotPage::keyPressEvent(QKeyEvent *event) {
         }
     }
 
-    // Escape = clear delta texts
     if (event->key() == Qt::Key_Escape) {
-        // deselect
         m_plot->setSelectedIndex(-1);
     }
 
-    // Ctrl state
     if (event->key() == Qt::Key_Control) {
         m_plot->setCtrlPressed(true);
     }

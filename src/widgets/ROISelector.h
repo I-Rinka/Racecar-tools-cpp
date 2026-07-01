@@ -56,6 +56,10 @@ public:
     explicit ROISelector(QWidget *parent = nullptr);
     void loadVideo(const QString &path);
     SpeedData getResult();
+    QString videoPath() const { return m_videoPath; }
+
+signals:
+    void processingFinished(const QString &name, const SpeedData &data, const QString &videoPath);
 
 protected:
     void dragEnterEvent(QDragEnterEvent *event) override;
@@ -93,5 +97,6 @@ private:
     bool m_roiSelected = false;
     QRect m_roiRect;
     QString m_savePath;
+    QString m_videoPath;
     bool m_processing = false;
 };

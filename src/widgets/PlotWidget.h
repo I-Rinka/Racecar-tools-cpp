@@ -24,10 +24,8 @@ public:
     std::vector<SDAnalyzer *> &analyzers() { return m_analyzers; }
     void setCtrlPressed(bool pressed) { m_ctrlPressed = pressed; }
 
-    // playing animation
-    void startAnimation();
-    void stopAnimation();
-    bool isAnimating() const { return m_animating; }
+    void showDistanceDiff(double d0, double d1);
+    void hideDistanceDiff();
 
 signals:
     void distanceHovered(double distance);
@@ -37,9 +35,6 @@ protected:
     void mouseReleaseEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
-
-private slots:
-    void onAnimationTick();
 
 private:
     void handleSelection(double x1, double x2);
@@ -59,7 +54,9 @@ private:
     QCPItemRect *m_selRect = nullptr;
     std::vector<QCPItemText *> m_deltaTexts;
 
-    // playing animation
-    bool m_animating = false;
-    QTimer *m_animTimer;
+    // distance difference visualization
+    QCPItemStraightLine *m_distLine0 = nullptr;
+    QCPItemStraightLine *m_distLine1 = nullptr;
+    QCPItemRect *m_distFill = nullptr;
+    QCPItemText *m_distDiffLabel = nullptr;
 };

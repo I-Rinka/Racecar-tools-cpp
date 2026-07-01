@@ -208,6 +208,7 @@ ROISelector::ROISelector(QWidget *parent) : QWidget(parent) {
 }
 
 void ROISelector::loadVideo(const QString &path) {
+    m_videoPath = path;
     m_video = new VideoWrapper(path.toStdString());
     if (!m_video->isOpened()) {
         QMessageBox::critical(this, tr("错误"), tr("无法打开视频文件"));
@@ -370,6 +371,9 @@ void ROISelector::keyPressEvent(QKeyEvent *event) {
             m_statusLabel->setText(tr("已保存"));
             QMessageBox::information(this, tr("保存成功"),
                 tr("文件已保存到: %1").arg(m_savePath));
+            emit processingFinished(
+                QFileInfo(m_savePath).completeBaseName(),
+                m_processor->getSpeedData(), m_videoPath);
         }
     } else if (event->key() == Qt::Key_Escape) {
         m_roiSelected = false;

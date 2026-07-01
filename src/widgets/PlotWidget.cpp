@@ -10,7 +10,6 @@ PlotWidget::PlotWidget(QWidget *parent) : QCustomPlot(parent) {
     xAxis->setLabel("Distance (m)");
     yAxis->setLabel("Speed (km/h)");
 
-    // disable default drag/zoom — we handle it manually
     setInteraction(QCP::iRangeDrag, false);
     setInteraction(QCP::iRangeZoom, false);
 
@@ -29,8 +28,29 @@ PlotWidget::PlotWidget(QWidget *parent) : QCustomPlot(parent) {
     m_selRect->setBrush(QBrush(QColor(100, 100, 255, 40)));
     m_selRect->setVisible(false);
 
-    m_animTimer = new QTimer(this);
-    connect(m_animTimer, &QTimer::timeout, this, &PlotWidget::onAnimationTick);
+    // distance difference: two vertical dashed lines + filled region + label
+    m_distLine0 = new QCPItemStraightLine(this);
+    m_distLine0->setPen(QPen(QColor("#1f77b4"), 2, Qt::DashLine));
+    m_distLine0->setVisible(false);
+    m_distLine0->setLayer("overlay");
+
+    m_distLine1 = new QCPItemStraightLine(this);
+    m_distLine1->setPen(QPen(QColor("#ff7f0e"), 2, Qt::DashLine));
+    m_distLine1->setVisible(false);
+    m_distLine1->setLayer("overlay");
+
+    m_distFill = new QCPItemRect(this);
+    m_distFill->setPen(Qt::NoPen);
+    m_distFill->setVisible(false);
+    m_distFill->setLayer("overlay");
+
+    m_distDiffLabel = new QCPItemText(this);
+    m_distDiffLabel->setFont(QFont("sans", 11, QFont::Bold));
+    m_distDiffLabel->setColor(Qt::white);
+    m_distDiffLabel->setPadding(QMargins(6, 3, 6, 3));
+    m_distDiffLabel->setPositionAlignment(Qt::AlignHCenter | Qt::AlignTop);
+    m_distDiffLabel->setVisible(false);
+    m_distDiffLabel->setLayer("overlay");
 
     setMouseTracking(true);
 }
@@ -51,6 +71,7 @@ void PlotWidget::addAnalyzer(SDAnalyzer *analyzer, const QColor &color) {
     auto *pointGraph = addGraph();
     pointGraph->setLineStyle(QCPGraph::lsNone);
     pointGraph->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssCircle, color, Qt::white, 8));
+    pointGraph->removeFromLegend();
     m_pointGraphs.push_back(pointGraph);
 
     m_hoverCallbacks.push_back(nullptr);
@@ -98,23 +119,60 @@ void PlotWidget::updatePlot() {
     replot(QCustomPlot::rpQueuedReplot);
 }
 
-// ---- Mouse: Ctrl+drag = pan, direct drag = selection, click = select curve ----
+// ---- Distance difference visualization ----
+
+void PlotWidget::showDistanceDiff(double d0, double d1) {
+    double lo = std::min(d0, d1);
+    double hi = std::max(d0, d1);
+    double dd = d0 - d1;
+
+    // vertical dashed lines at each distance
+    m_distLine0->point1->setCoords(d0, 0);
+    m_distLine0->point2->setCoords(d0, 1);
+    m_distLine0->setVisible(true);
+
+    m_distLine1->point1->setCoords(d1, 0);
+    m_distLine1->point2->setCoords(d1, 1);
+    m_distLine1->setVisible(true);
+
+    // filled region between two lines
+    QColor fillColor = (dd >= 0) ? QColor(0, 200, 0, 50) : QColor(200, 0, 0, 50);
+    m_distFill->setBrush(QBrush(fillColor));
+    m_distFill->topLeft->setCoords(lo, yAxis->range().upper);
+    m_distFill->bottomRight->setCoords(hi, yAxis->range().lower);
+    m_distFill->setVisible(true);
+
+    // label at top center of the region
+    double midD = (d0 + d1) / 2.0;
+    QColor labelBg = (dd >= 0) ? QColor(0, 150, 0, 200) : QColor(200, 0, 0, 200);
+    m_distDiffLabel->setBrush(QBrush(labelBg));
+    m_distDiffLabel->position->setCoords(midD, yAxis->range().upper);
+    m_distDiffLabel->setText(QString::fromUtf8("Δd = %1 m").arg(dd, 0, 'f', 1));
+    m_distDiffLabel->setVisible(true);
+}
+
+void PlotWidget::hideDistanceDiff() {
+    m_distLine0->setVisible(false);
+    m_distLine1->setVisible(false);
+    m_distFill->setVisible(false);
+    m_distDiffLabel->setVisible(false);
+    replot();
+}
+
+// ---- Mouse ----
 
 void PlotWidget::mousePressEvent(QMouseEvent *event) {
     if (event->button() == Qt::LeftButton) {
         if (event->modifiers() & Qt::ControlModifier) {
-            // ctrl+drag → pan
             setInteraction(QCP::iRangeDrag, true);
             QCustomPlot::mousePressEvent(event);
         } else {
-            // start rectangle selection
             m_selecting = true;
             m_selStartX = xAxis->pixelToCoord(event->pos().x());
             m_selRect->topLeft->setCoords(m_selStartX, yAxis->range().upper);
             m_selRect->bottomRight->setCoords(m_selStartX, yAxis->range().lower);
             m_selRect->setVisible(true);
 
-            // check if clicking on a graph to select it
             double dist = xAxis->pixelToCoord(event->pos().x());
             double minDist = 1e18;
             int bestIdx = -1;
@@ -124,9 +182,10 @@ void PlotWidget::mousePressEvent(QMouseEvent *event) {
                 double d = std::abs(yPix - event->pos().y());
                 if (d < minDist) { minDist = d; bestIdx = static_cast<int>(i); }
             }
-            if (minDist < 20.0) {
+            if (minDist < 20.0)
                 setSelectedIndex(bestIdx);
-            }
+            else
+                setSelectedIndex(-1);
         }
     }
 }
@@ -141,9 +200,8 @@ void PlotWidget::mouseReleaseEvent(QMouseEvent *event) {
             double x2 = xAxis->pixelToCoord(event->pos().x());
             double x1 = m_selStartX;
             if (x1 > x2) std::swap(x1, x2);
-            if (x2 - x1 > 5.0) {
+            if (x2 - x1 > 5.0)
                 handleSelection(x1, x2);
-            }
             replot();
         }
     }
@@ -183,7 +241,6 @@ void PlotWidget::mouseMoveEvent(QMouseEvent *event) {
 }
 
 void PlotWidget::wheelEvent(QWheelEvent *event) {
-    // ctrl+scroll = zoom
     if (event->modifiers() & Qt::ControlModifier) {
         double factor = (event->angleDelta().y() > 0) ? 0.85 : 1.18;
         double cx = xAxis->pixelToCoord(event->position().x());
@@ -217,7 +274,6 @@ double PlotWidget::computeSegmentTime(SDAnalyzer *a, double x1, double x2) {
 void PlotWidget::handleSelection(double x1, double x2) {
     if (m_analyzers.size() < 2) return;
 
-    // remove old delta text near this region
     double midX = (x1 + x2) / 2.0;
     for (auto it = m_deltaTexts.begin(); it != m_deltaTexts.end();) {
         double tx = (*it)->position->coords().x();
@@ -242,30 +298,4 @@ void PlotWidget::handleSelection(double x1, double x2) {
     txt->setBrush(QBrush(QColor(255, 255, 255, 153)));
     m_deltaTexts.push_back(txt);
     replot();
-}
-
-// ---- Playing animation ----
-
-void PlotWidget::startAnimation() {
-    if (m_analyzers.empty()) return;
-    m_animating = true;
-    // use slowest fps among analyzers (approximate)
-    m_animTimer->start(33); // ~30fps
-}
-
-void PlotWidget::stopAnimation() {
-    m_animating = false;
-    m_animTimer->stop();
-}
-
-void PlotWidget::onAnimationTick() {
-    for (auto *a : m_analyzers)
-        a->incCurrentIndex();
-    updatePlot();
-
-    // invoke hover callbacks to sync video
-    for (size_t i = 0; i < m_analyzers.size(); ++i) {
-        if (i < m_hoverCallbacks.size() && m_hoverCallbacks[i])
-            m_hoverCallbacks[i](m_analyzers[i], static_cast<int>(i));
-    }
 }

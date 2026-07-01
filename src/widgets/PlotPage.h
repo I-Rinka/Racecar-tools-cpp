@@ -5,6 +5,7 @@
 #include <QSplitter>
 #include <QPushButton>
 #include <QKeyEvent>
+#include <QTimer>
 #include <vector>
 #include "PlotWidget.h"
 #include "VideoPlayer.h"
@@ -24,6 +25,9 @@ protected:
     void keyPressEvent(QKeyEvent *event) override;
     void keyReleaseEvent(QKeyEvent *event) override;
 
+private slots:
+    void onSyncTick();
+
 private:
     void refreshVideoLayout();
     void registerVideoHover(int index);
@@ -36,4 +40,5 @@ private:
     std::vector<double> m_videoFps;
     bool m_playing = false;
     QString m_pendingCsv;
+    QTimer *m_syncTimer;
 };

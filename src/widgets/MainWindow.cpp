@@ -33,8 +33,28 @@ void MainWindow::addPlotTab() {
 
 void MainWindow::addAnalyzeTab() {
     auto *page = new ROISelector(this);
+    connect(page, &ROISelector::processingFinished,
+            this, &MainWindow::onAnalysisFinished);
     int idx = m_tabs->addTab(page, tr("视频解析"));
     m_tabs->setCurrentIndex(idx);
+}
+
+void MainWindow::onAnalysisFinished(const QString &name, const SpeedData &data,
+                                     const QString &videoPath) {
+    PlotPage *plotPage = nullptr;
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        plotPage = qobject_cast<PlotPage *>(m_tabs->widget(i));
+        if (plotPage) {
+            m_tabs->setCurrentIndex(i);
+            break;
+        }
+    }
+    if (!plotPage) {
+        plotPage = new PlotPage(this);
+        int idx = m_tabs->addTab(plotPage, tr("圈速分析"));
+        m_tabs->setCurrentIndex(idx);
+    }
+    plotPage->addInstanceByData(name, data, videoPath);
 }
 
 void MainWindow::onTabCloseRequested(int index) {
