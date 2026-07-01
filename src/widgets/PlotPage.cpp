@@ -1,6 +1,7 @@
 #include "PlotPage.h"
 #include <QMimeData>
 #include <QFileInfo>
+#include <QDir>
 #include <QMessageBox>
 #include <QDragEnterEvent>
 
@@ -20,21 +21,22 @@ PlotPage::PlotPage(QWidget *parent) : QWidget(parent) {
     mainLayout->addWidget(m_videoContainer, 2);
 
     setAcceptDrops(true);
+    setFocusPolicy(Qt::StrongFocus);
 }
 
 void PlotPage::addInstance(const QString &csvPath, const QString &videoPath) {
     auto *analyzer = new SDAnalyzer(csvPath.toStdString());
     m_analyzers.push_back(analyzer);
 
-    QColor color = COLORS[m_analyzers.size() - 1];
+    QColor color = COLORS[(m_analyzers.size() - 1) % 4];
     m_plot->addAnalyzer(analyzer, color);
 
     auto *player = new VideoPlayer(videoPath, this);
     m_videos.push_back(player);
+    m_videoFps.push_back(30.0);
 
     int initFrame = analyzer->getInitialFrame();
-    double fps = 30.0; // default
-    player->seekToFrame(initFrame, fps);
+    player->seekToFrame(initFrame, 30.0);
 
     registerVideoHover(static_cast<int>(m_videos.size()) - 1);
     refreshVideoLayout();
@@ -45,11 +47,12 @@ void PlotPage::addInstanceByData(const QString &name, const SpeedData &data,
     auto *analyzer = new SDAnalyzer(name.toStdString(), data);
     m_analyzers.push_back(analyzer);
 
-    QColor color = COLORS[m_analyzers.size() - 1];
+    QColor color = COLORS[(m_analyzers.size() - 1) % 4];
     m_plot->addAnalyzer(analyzer, color);
 
     auto *player = new VideoPlayer(videoPath, this);
     m_videos.push_back(player);
+    m_videoFps.push_back(30.0);
 
     int initFrame = analyzer->getInitialFrame();
     player->seekToFrame(initFrame, 30.0);
@@ -62,7 +65,8 @@ void PlotPage::registerVideoHover(int index) {
     m_plot->registerHoverCallback(index, [this, index](SDAnalyzer *a, int) {
         if (index < static_cast<int>(m_videos.size())) {
             int frame = a->getCurrentFrameIndex();
-            m_videos[index]->seekToFrame(frame, 30.0);
+            double fps = index < static_cast<int>(m_videoFps.size()) ? m_videoFps[index] : 30.0;
+            m_videos[index]->seekToFrame(frame, fps);
         }
     });
 }
@@ -98,7 +102,6 @@ void PlotPage::dropEvent(QDropEvent *event) {
         QString ext = fi.suffix().toLower();
 
         if (ext == "csv") {
-            // try to find matching video
             QString base = fi.completeBaseName();
             if (base.endsWith("_database"))
                 base = base.left(base.length() - 9);
@@ -107,7 +110,6 @@ void PlotPage::dropEvent(QDropEvent *event) {
                 addInstance(path, videoPath);
             } else {
                 m_pendingCsv = path;
-                // just add data without video for now
                 auto *analyzer = new SDAnalyzer(path.toStdString());
                 m_analyzers.push_back(analyzer);
                 QColor color = COLORS[(m_analyzers.size() - 1) % 4];
@@ -121,6 +123,7 @@ void PlotPage::dropEvent(QDropEvent *event) {
             } else {
                 auto *player = new VideoPlayer(path, this);
                 m_videos.push_back(player);
+                m_videoFps.push_back(30.0);
                 int idx = static_cast<int>(m_analyzers.size()) - 1;
                 if (idx >= 0) {
                     player->seekToFrame(m_analyzers[idx]->getInitialFrame(), 30.0);
@@ -134,13 +137,45 @@ void PlotPage::dropEvent(QDropEvent *event) {
 }
 
 void PlotPage::keyPressEvent(QKeyEvent *event) {
+    // Space = toggle play/animation
     if (event->key() == Qt::Key_Space) {
         m_playing = !m_playing;
         for (auto *v : m_videos) v->setPlaying(m_playing);
+        if (m_playing)
+            m_plot->startAnimation();
+        else
+            m_plot->stopAnimation();
     }
+
+    // Left/Right = adjust selected curve distance by 1m
+    int sel = m_plot->selectedIndex();
+    if (sel >= 0 && sel < static_cast<int>(m_analyzers.size())) {
+        if (event->key() == Qt::Key_Left) {
+            m_analyzers[sel]->adjustDistance(-1.0);
+            m_plot->refreshGraphData();
+        } else if (event->key() == Qt::Key_Right) {
+            m_analyzers[sel]->adjustDistance(1.0);
+            m_plot->refreshGraphData();
+        }
+    }
+
+    // Escape = clear delta texts
+    if (event->key() == Qt::Key_Escape) {
+        // deselect
+        m_plot->setSelectedIndex(-1);
+    }
+
+    // Ctrl state
+    if (event->key() == Qt::Key_Control) {
+        m_plot->setCtrlPressed(true);
+    }
+
     QWidget::keyPressEvent(event);
 }
 
 void PlotPage::keyReleaseEvent(QKeyEvent *event) {
+    if (event->key() == Qt::Key_Control) {
+        m_plot->setCtrlPressed(false);
+    }
     QWidget::keyReleaseEvent(event);
 }

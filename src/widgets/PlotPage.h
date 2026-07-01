@@ -33,6 +33,7 @@ private:
     QGridLayout *m_videoLayout;
     std::vector<VideoPlayer *> m_videos;
     std::vector<SDAnalyzer *> m_analyzers;
+    std::vector<double> m_videoFps;
     bool m_playing = false;
     QString m_pendingCsv;
 };
