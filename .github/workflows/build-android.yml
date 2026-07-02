@@ -1,0 +1,61 @@
+name: Build Android
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt for Android
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.*'
+          target: 'android'
+          arch: 'android_arm64_v8a'
+          modules: 'qtmultimedia'
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK/NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK
+        run: sdkmanager "ndk;26.1.10909125"
+
+      - name: Download OpenCV Android SDK
+        run: |
+          curl -sL -o opencv.zip https://github.com/opencv/opencv/releases/download/4.10.0/opencv-4.10.0-android-sdk.zip
+          unzip -q opencv.zip
+
+      - name: Configure
+        run: |
+          QT_ANDROID_DIR=$(echo "$CMAKE_PREFIX_PATH" | tr ':' '\n' | grep -i android | head -1)
+          echo "Qt Android: $QT_ANDROID_DIR"
+          echo "Qt Host: $QT_HOST_PATH"
+          cmake -B build \
+            -DCMAKE_TOOLCHAIN_FILE="$QT_ANDROID_DIR/lib/cmake/Qt6/qt.toolchain.cmake" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DQT_HOST_PATH="$QT_HOST_PATH" \
+            -DANDROID_SDK_ROOT=$ANDROID_HOME \
+            -DANDROID_NDK_ROOT=$ANDROID_HOME/ndk/26.1.10909125 \
+            -DANDROID_ABI=arm64-v8a \
+            -DOpenCV_DIR=${{ github.workspace }}/OpenCV-android-sdk/sdk/native/jni
+
+      - name: Build
+        run: cmake --build build --config Release -j$(nproc)
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RacecarTools-Android
+          path: build/android-build/
+          if-no-files-found: warn

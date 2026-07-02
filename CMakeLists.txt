@@ -27,7 +27,7 @@ add_library(qcustomplot STATIC
 )
 target_include_directories(qcustomplot PUBLIC third_party/qcustomplot)
 target_link_libraries(qcustomplot PUBLIC Qt6::Widgets Qt6::PrintSupport)
-target_compile_definitions(qcustomplot PUBLIC QCUSTOMPLOT_USE_LIBRARY)
+target_compile_definitions(qcustomplot PRIVATE QCUSTOMPLOT_COMPILE_LIBRARY)
 
 set(SOURCES
     src/main.cpp
