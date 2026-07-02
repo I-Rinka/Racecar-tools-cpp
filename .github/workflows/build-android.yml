@@ -32,8 +32,9 @@ jobs:
       - name: Set up Android SDK/NDK
         uses: android-actions/setup-android@v3
 
-      - name: Install NDK
-        run: sdkmanager "ndk;26.1.10909125"
+      - name: Install NDK and platform
+        run: |
+          sdkmanager "ndk;26.1.10909125" "platforms;android-34"
 
       - name: Download OpenCV Android SDK
         run: |
@@ -50,6 +51,7 @@ jobs:
             -DANDROID_SDK_ROOT=$ANDROID_HOME \
             -DANDROID_NDK_ROOT=$ANDROID_HOME/ndk/26.1.10909125 \
             -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-34 \
             -DOpenCV_DIR=${{ github.workspace }}/OpenCV-android-sdk/sdk/native/jni
 
       - name: Build
