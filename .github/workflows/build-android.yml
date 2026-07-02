@@ -35,6 +35,9 @@ jobs:
       - name: Install NDK and platform
         run: |
           sdkmanager "ndk;26.1.10909125" "platforms;android-34"
+          # Remove broken android-36-ext19 that ships on ubuntu-latest runners;
+          # its android.jar is corrupt and causes aapt2 to fail
+          rm -rf "$ANDROID_HOME/platforms/android-36-ext19"
 
       - name: Download OpenCV Android SDK
         run: |
