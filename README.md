@@ -13,6 +13,8 @@
 
 ---
 
+C++性能优化版，重构自 [I-Rinka/Racecar-tools](https://github.com/I-Rinka/Racecar-tools)
+
 ## 功能
 
 - **视频速度识别** — 拖入车载视频，框选仪表盘速度区域，自动逐帧 OCR 提取速度数据
