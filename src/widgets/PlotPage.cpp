@@ -36,12 +36,14 @@ void PlotPage::addInstance(const QString &csvPath, const QString &videoPath) {
     QColor color = COLORS[(m_analyzers.size() - 1) % 4];
     m_plot->addAnalyzer(analyzer, color);
 
+    double fps = analyzer->getFps();
+
     auto *player = new VideoPlayer(videoPath, this);
     m_videos.push_back(player);
-    m_videoFps.push_back(30.0);
+    m_videoFps.push_back(fps);
 
     int initFrame = analyzer->getInitialFrame();
-    player->seekToFrame(initFrame, 30.0);
+    player->seekToFrame(initFrame, fps);
 
     registerVideoHover(static_cast<int>(m_videos.size()) - 1);
     refreshVideoLayout();
@@ -55,12 +57,14 @@ void PlotPage::addInstanceByData(const QString &name, const SpeedData &data,
     QColor color = COLORS[(m_analyzers.size() - 1) % 4];
     m_plot->addAnalyzer(analyzer, color);
 
+    double fps = analyzer->getFps();
+
     auto *player = new VideoPlayer(videoPath, this);
     m_videos.push_back(player);
-    m_videoFps.push_back(30.0);
+    m_videoFps.push_back(fps);
 
     int initFrame = analyzer->getInitialFrame();
-    player->seekToFrame(initFrame, 30.0);
+    player->seekToFrame(initFrame, fps);
 
     registerVideoHover(static_cast<int>(m_videos.size()) - 1);
     refreshVideoLayout();
@@ -137,12 +141,13 @@ void PlotPage::dropEvent(QDropEvent *event) {
             if (m_pendingCsv.isEmpty()) {
                 QMessageBox::warning(this, tr("错误"), tr("请先拖入 CSV 文件"));
             } else {
+                int idx = static_cast<int>(m_analyzers.size()) - 1;
+                double fps = (idx >= 0) ? m_analyzers[idx]->getFps() : 30.0;
                 auto *player = new VideoPlayer(path, this);
                 m_videos.push_back(player);
-                m_videoFps.push_back(30.0);
-                int idx = static_cast<int>(m_analyzers.size()) - 1;
+                m_videoFps.push_back(fps);
                 if (idx >= 0) {
-                    player->seekToFrame(m_analyzers[idx]->getInitialFrame(), 30.0);
+                    player->seekToFrame(m_analyzers[idx]->getInitialFrame(), fps);
                     registerVideoHover(static_cast<int>(m_videos.size()) - 1);
                 }
                 refreshVideoLayout();
@@ -185,7 +190,11 @@ void PlotPage::keyPressEvent(QKeyEvent *event) {
     }
 
     if (event->key() == Qt::Key_Escape) {
-        m_plot->setSelectedIndex(-1);
+        if (m_plot->selectedIndex() >= 0) {
+            m_plot->setSelectedIndex(-1);
+        } else {
+            m_plot->clearDeltaTexts();
+        }
     }
 
     if (event->key() == Qt::Key_Control) {

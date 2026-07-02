@@ -86,7 +86,10 @@ void PlotWidget::setSelectedIndex(int idx) {
     m_selectedIndex = idx;
     for (size_t i = 0; i < m_graphs.size(); ++i) {
         auto pen = m_graphs[i]->pen();
-        pen.setWidth(static_cast<int>(i) == m_selectedIndex ? 4 : 2);
+        pen.setWidth(2);
+        QColor c = pen.color();
+        c.setAlpha((static_cast<int>(i) == m_selectedIndex || m_selectedIndex < 0) ? 255 : 80);
+        pen.setColor(c);
         m_graphs[i]->setPen(pen);
     }
     replot();
@@ -272,15 +275,21 @@ double PlotWidget::computeSegmentTime(SDAnalyzer *a, double x1, double x2) {
     return totalTime;
 }
 
+void PlotWidget::clearDeltaTexts() {
+    for (auto &entry : m_deltaEntries)
+        removeItem(entry.text);
+    m_deltaEntries.clear();
+    replot();
+}
+
 void PlotWidget::handleSelection(double x1, double x2) {
     if (m_analyzers.size() < 2) return;
 
-    double midX = (x1 + x2) / 2.0;
-    for (auto it = m_deltaTexts.begin(); it != m_deltaTexts.end();) {
-        double tx = (*it)->position->coords().x();
-        if (std::abs(tx - midX) < 500) {
-            removeItem(*it);
-            it = m_deltaTexts.erase(it);
+    // Remove existing entries that overlap with the new range
+    for (auto it = m_deltaEntries.begin(); it != m_deltaEntries.end();) {
+        if (it->x1 < x2 && it->x2 > x1) {
+            removeItem(it->text);
+            it = m_deltaEntries.erase(it);
         } else {
             ++it;
         }
@@ -290,6 +299,7 @@ void PlotWidget::handleSelection(double x1, double x2) {
     double t2 = computeSegmentTime(m_analyzers[1], x1, x2);
     double dt = t1 - t2;
 
+    double midX = (x1 + x2) / 2.0;
     auto *txt = new QCPItemText(this);
     txt->position->setCoords(midX, yAxis->range().upper * 0.9);
     txt->setText(QString::fromUtf8("Δt = %1 s").arg(dt, 0, 'f', 3));
@@ -297,6 +307,6 @@ void PlotWidget::handleSelection(double x1, double x2) {
     txt->setColor(QColor("#800080"));
     txt->setPadding(QMargins(4, 2, 4, 2));
     txt->setBrush(QBrush(QColor(255, 255, 255, 153)));
-    m_deltaTexts.push_back(txt);
+    m_deltaEntries.push_back({txt, x1, x2});
     replot();
 }

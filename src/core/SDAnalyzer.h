@@ -29,6 +29,7 @@ public:
     int getCurrentFrameIndex() const;
     double getCurrentDistance() const;
     int getInitialFrame() const;
+    double getFps() const;
     void incCurrentIndex();
 
     const SpeedData &data() const { return m_data; }

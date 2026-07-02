@@ -26,6 +26,7 @@ public:
 
     void showDistanceDiff(double d0, double d1);
     void hideDistanceDiff();
+    void clearDeltaTexts();
 
 signals:
     void distanceHovered(double distance);
@@ -52,7 +53,12 @@ private:
     bool m_selecting = false;
     double m_selStartX = 0;
     QCPItemRect *m_selRect = nullptr;
-    std::vector<QCPItemText *> m_deltaTexts;
+
+    struct DeltaEntry {
+        QCPItemText *text;
+        double x1, x2;
+    };
+    std::vector<DeltaEntry> m_deltaEntries;
 
     // distance difference visualization
     QCPItemStraightLine *m_distLine0 = nullptr;

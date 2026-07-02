@@ -112,6 +112,18 @@ int SDAnalyzer::getInitialFrame() const {
     return m_data.frame.empty() ? 0 : m_data.frame[0];
 }
 
+double SDAnalyzer::getFps() const {
+    if (m_data.time_s.size() >= 2) {
+        double dt = m_data.time_s[1] - m_data.time_s[0];
+        if (dt > 0) return 1.0 / dt;
+    }
+    if (m_data.frame.size() >= 2) {
+        int df = m_data.frame[1] - m_data.frame[0];
+        if (df == 1) return 30.0;
+    }
+    return 30.0;
+}
+
 void SDAnalyzer::incCurrentIndex() {
     if (m_currentIndex < m_data.size() - 1)
         ++m_currentIndex;

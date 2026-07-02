@@ -14,6 +14,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     connect(m_tabs, &QTabWidget::tabCloseRequested, this, &MainWindow::onTabCloseRequested);
 
     addPlotTab();
+    addAnalyzeTab();
+    m_tabs->setCurrentIndex(1);
     createMenus();
 }
 
