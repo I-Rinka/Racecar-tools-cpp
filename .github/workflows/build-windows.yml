@@ -22,46 +22,45 @@ jobs:
           modules: 'qtmultimedia'
 
       - name: Download OpenCV
-        shell: bash
+        shell: pwsh
         run: |
-          curl -sL -o opencv.exe "https://github.com/opencv/opencv/releases/download/4.10.0/opencv-4.10.0-windows.exe"
-          ./opencv.exe -o"opencv_extract" -y
-          echo "=== OpenCVConfig.cmake locations ==="
-          find opencv_extract -name "OpenCVConfig.cmake" 2>/dev/null
-          echo "=== Structure ==="
-          ls opencv_extract/opencv/build/ 2>/dev/null || ls opencv_extract/ 2>/dev/null
+          Invoke-WebRequest -Uri "https://github.com/opencv/opencv/releases/download/4.10.0/opencv-4.10.0-windows.exe" -OutFile opencv.exe
+          7z x opencv.exe -oopencv_extract -y
+          Write-Host "=== Looking for OpenCVConfig.cmake ==="
+          Get-ChildItem -Recurse opencv_extract -Filter "OpenCVConfig.cmake" | ForEach-Object { Write-Host $_.FullName }
+          Write-Host "=== Top-level structure ==="
+          Get-ChildItem opencv_extract
 
       - name: Configure
-        shell: bash
+        shell: pwsh
         run: |
-          OPENCV_DIR="$(pwd)/opencv_extract/opencv/build"
-          echo "OpenCV_DIR=$OPENCV_DIR"
-          cmake -B build -G "Visual Studio 17 2022" -A x64 \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DOpenCV_DIR="$OPENCV_DIR"
+          $opencvDir = (Get-ChildItem -Recurse opencv_extract -Filter "OpenCVConfig.cmake" | Select-Object -First 1).DirectoryName
+          Write-Host "Using OpenCV_DIR=$opencvDir"
+          cmake -B build -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DOpenCV_DIR="$opencvDir"
 
       - name: Build
         run: cmake --build build --config Release
 
       - name: Package
-        shell: bash
+        shell: pwsh
         run: |
-          mkdir -p package
-          cp build/Release/RacecarTools.exe package/
+          New-Item -ItemType Directory -Force -Path package
+          Copy-Item build/Release/RacecarTools.exe package/
 
           # Copy OpenCV DLLs
-          OPENCV_BIN="$(pwd)/opencv_extract/opencv/build/x64/vc16/bin"
-          if [ -d "$OPENCV_BIN" ]; then
-            cp "$OPENCV_BIN"/*.dll package/
-          fi
+          Get-ChildItem -Recurse opencv_extract -Filter "*.dll" |
+            Where-Object { $_.FullName -match "x64" -and $_.FullName -notmatch "d\.dll$" } |
+            Copy-Item -Destination package/
 
           # Run windeployqt to bundle Qt DLLs
-          WINDEPLOYQT=$(find "$QT_ROOT_DIR" -name "windeployqt*.exe" 2>/dev/null | head -1)
-          if [ -n "$WINDEPLOYQT" ]; then
-            "$WINDEPLOYQT" --release --no-translations package/RacecarTools.exe
-          fi
+          $windeployqt = Get-ChildItem -Recurse "$env:QT_ROOT_DIR" -Filter "windeployqt*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($windeployqt) {
+            & $windeployqt.FullName --release --no-translations package/RacecarTools.exe
+          }
 
-          cd package && 7z a ../RacecarTools-Windows.zip .
+          Compress-Archive -Path package/* -DestinationPath RacecarTools-Windows.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
