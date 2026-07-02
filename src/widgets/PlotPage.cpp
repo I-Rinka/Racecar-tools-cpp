@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QMessageBox>
 #include <QDragEnterEvent>
+#include <numeric>
 
 static const QColor COLORS[] = {
     QColor("#1f77b4"), QColor("#ff7f0e"), QColor("#d62728"), QColor("#9467bd")
@@ -22,6 +23,12 @@ PlotPage::PlotPage(QWidget *parent) : QWidget(parent) {
     m_videoLayout->setContentsMargins(0, 0, 0, 0);
     m_videoLayout->setSpacing(4);
     mainLayout->addWidget(m_videoContainer, 2);
+
+    m_editBtn = new QPushButton(tr("改变曲线"), this);
+    m_editBtn->setFixedHeight(28);
+    m_editBtn->setMaximumWidth(100);
+    connect(m_editBtn, &QPushButton::clicked, this, &PlotPage::onEditCurve);
+    mainLayout->addWidget(m_editBtn, 0, Qt::AlignLeft);
 
     m_syncTimer = new QTimer(this);
     connect(m_syncTimer, &QTimer::timeout, this, &PlotPage::onSyncTick);
@@ -218,6 +225,96 @@ void PlotPage::keyReleaseEvent(QKeyEvent *event) {
         m_plot->setCtrlPressed(false);
     }
     QWidget::keyReleaseEvent(event);
+}
+
+void PlotPage::onEditCurve() {
+    int sel = m_plot->selectedIndex();
+    if (sel < 0 || sel >= static_cast<int>(m_analyzers.size())) {
+        QMessageBox::information(this, tr("提示"), tr("请先点击选中一条曲线"));
+        return;
+    }
+
+    m_editingIndex = sel;
+    auto *analyzer = m_analyzers[sel];
+    SpeedData &data = const_cast<SpeedData &>(analyzer->data());
+
+    std::vector<int> indices(data.size());
+    std::iota(indices.begin(), indices.end(), 0);
+
+    m_videoContainer->hide();
+    m_editBtn->hide();
+
+    m_editorContainer = new QWidget(this);
+    auto *editorLayout = new QHBoxLayout(m_editorContainer);
+    editorLayout->setContentsMargins(0, 0, 0, 0);
+
+    m_editor = new DataEditor(data, indices,
+        [this](const SpeedData &) { onEditorClosed(); }, this);
+
+    // Video for this curve (reuse path from existing player or create new)
+    QString videoPath;
+    if (sel < static_cast<int>(m_videos.size())) {
+        // Get the video source — we need to create a new player for the editor
+        // The video path isn't stored separately, so reuse the existing player
+        m_editorVideo = m_videos[sel];
+        m_editorVideo->setParent(m_editorContainer);
+    } else {
+        m_editorVideo = nullptr;
+    }
+
+    editorLayout->addWidget(m_editor, 3);
+    if (m_editorVideo)
+        editorLayout->addWidget(m_editorVideo, 2);
+
+    // Insert editor container where video container was
+    auto *mainLayout = qobject_cast<QVBoxLayout *>(layout());
+    mainLayout->insertWidget(1, m_editorContainer, 2);
+
+    double fps = (sel < static_cast<int>(m_videoFps.size())) ? m_videoFps[sel] : 30.0;
+    m_editor->registerHoverCallback([this, fps](int idx) {
+        if (!m_editorVideo) return;
+        auto *analyzer = m_analyzers[m_editingIndex];
+        int frame = analyzer->data().frame[idx];
+        m_editorVideo->seekToFrame(frame, fps);
+    });
+}
+
+void PlotPage::onEditorClosed() {
+    if (m_editingIndex >= 0 && m_editingIndex < static_cast<int>(m_analyzers.size())) {
+        auto &data = m_analyzers[m_editingIndex]->data();
+        // Recompute distance from speed after edits
+        if (!data.speed.empty() && !data.time_s.empty()) {
+            data.distance.resize(data.speed.size());
+            data.distance[0] = 0;
+            for (int i = 1; i < data.size(); ++i) {
+                double dt = data.time_s[i] - data.time_s[i - 1];
+                double vavg = (data.speed[i] + data.speed[i - 1]) / 2.0;
+                data.distance[i] = data.distance[i - 1] + vavg * dt * 1000.0 / 3600.0;
+            }
+        }
+        m_analyzers[m_editingIndex]->replaceData(data);
+        m_plot->refreshGraphData();
+        m_plot->rescaleAxes();
+        m_plot->replot();
+    }
+
+    if (m_editorVideo && m_editingIndex < static_cast<int>(m_videos.size())) {
+        m_editorVideo->setParent(m_videoContainer);
+        m_editorVideo = nullptr;
+    }
+
+    if (m_editorContainer) {
+        auto *mainLayout = qobject_cast<QVBoxLayout *>(layout());
+        mainLayout->removeWidget(m_editorContainer);
+        m_editorContainer->deleteLater();
+        m_editorContainer = nullptr;
+        m_editor = nullptr;
+    }
+
+    m_videoContainer->show();
+    m_editBtn->show();
+    refreshVideoLayout();
+    m_editingIndex = -1;
 }
 
 void PlotPage::addLiveInstance(ROISelector *roi) {

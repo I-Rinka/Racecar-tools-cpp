@@ -128,9 +128,17 @@ void DataEditor::findOutstanding() {
 void DataEditor::fillSelected() {
     if (m_lastEditedValue.isEmpty()) return;
     m_updating = true;
+    bool ok;
+    double val = m_lastEditedValue.toDouble(&ok);
     for (auto &idx : m_table->selectionModel()->selectedIndexes()) {
-        auto *item = m_table->item(idx.row(), idx.column());
+        int r = idx.row(), c = idx.column();
+        auto *item = m_table->item(r, c);
         if (item) item->setText(m_lastEditedValue);
+        if (ok && r < static_cast<int>(m_indices.size())) {
+            int dataIdx = m_indices[r];
+            if (c == 0) m_data.distance[dataIdx] = val;
+            else m_data.speed[dataIdx] = val;
+        }
     }
     m_updating = false;
 }

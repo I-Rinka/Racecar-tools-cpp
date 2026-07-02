@@ -34,6 +34,7 @@ public:
     void replaceData(const SpeedData &data);
 
     const SpeedData &data() const { return m_data; }
+    SpeedData &data() { return m_data; }
     const std::string &name() const { return m_data.name; }
     int currentIndex() const { return m_currentIndex; }
 

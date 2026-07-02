@@ -7,9 +7,11 @@
 #include <QKeyEvent>
 #include <QTimer>
 #include <QPointer>
+#include <QStackedWidget>
 #include <vector>
 #include "PlotWidget.h"
 #include "VideoPlayer.h"
+#include "DataEditor.h"
 #include "core/SDAnalyzer.h"
 
 class ROISelector;
@@ -35,6 +37,8 @@ protected:
 private slots:
     void onSyncTick();
     void onLiveUpdate();
+    void onEditCurve();
+    void onEditorClosed();
 
 private:
     void refreshVideoLayout();
@@ -43,12 +47,19 @@ private:
     PlotWidget *m_plot;
     QWidget *m_videoContainer;
     QHBoxLayout *m_videoLayout;
+    QPushButton *m_editBtn;
     std::vector<VideoPlayer *> m_videos;
     std::vector<SDAnalyzer *> m_analyzers;
     std::vector<double> m_videoFps;
     bool m_playing = false;
     QString m_pendingCsv;
     QTimer *m_syncTimer;
+
+    // Data editor mode
+    QWidget *m_editorContainer = nullptr;
+    DataEditor *m_editor = nullptr;
+    VideoPlayer *m_editorVideo = nullptr;
+    int m_editingIndex = -1;
 
     struct LiveSource {
         QPointer<ROISelector> roi;
