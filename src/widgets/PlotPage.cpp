@@ -340,28 +340,98 @@ void PlotPage::addLiveInstance(ROISelector *roi) {
     }
 
     if (roi->isProcessing()) {
-        m_liveSources.push_back({roi, static_cast<int>(m_analyzers.size()) - 1});
+        LiveSource src;
+        src.roi = roi;
+        src.analyzerIndex = static_cast<int>(m_analyzers.size()) - 1;
+        src.fullData = data;
+        src.lastSize = data.size();
+        m_liveSources.push_back(std::move(src));
         if (!m_liveTimer) {
             m_liveTimer = new QTimer(this);
             connect(m_liveTimer, &QTimer::timeout, this, &PlotPage::onLiveUpdate);
         }
-        m_liveTimer->start(500);
+        m_liveInterval = 100;
+        m_liveTimer->start(m_liveInterval);
     }
 }
 
 void PlotPage::onLiveUpdate() {
     bool anyAlive = false;
+    bool anyGrew = false;
+
+    // Phase 1: fetch latest data from all live sources
     for (auto &src : m_liveSources) {
-        if (src.roi.isNull() || !src.roi->isProcessing()) continue;
-        anyAlive = true;
+        if (src.roi.isNull()) continue;
+        bool alive = src.roi->isProcessing();
+        if (alive) anyAlive = true;
+
         SpeedData data = src.roi->getResult();
-        if (data.size() > 0 && src.analyzerIndex < static_cast<int>(m_analyzers.size())) {
-            m_analyzers[src.analyzerIndex]->replaceData(data);
+        if (data.size() > src.lastSize) {
+            anyGrew = true;
+            src.lastSize = data.size();
+        }
+        if (data.size() > 0)
+            src.fullData = std::move(data);
+    }
+
+    // Phase 2: determine display limit (min max-distance across active live sources)
+    int activeLiveCount = 0;
+    double minMaxDist = 1e18;
+    for (auto &src : m_liveSources) {
+        if (src.fullData.distance.empty()) continue;
+        activeLiveCount++;
+        double maxDist = src.fullData.distance.back();
+        if (maxDist < minMaxDist) minMaxDist = maxDist;
+    }
+
+    // Phase 3: display data clipped to minMaxDist (sync multiple curves)
+    bool needSync = (activeLiveCount >= 2);
+    for (auto &src : m_liveSources) {
+        if (src.fullData.size() == 0) continue;
+        if (src.analyzerIndex >= static_cast<int>(m_analyzers.size())) continue;
+
+        if (needSync && minMaxDist < 1e17) {
+            // Find how many points to display (up to minMaxDist)
+            SpeedData clipped;
+            clipped.name = src.fullData.name;
+            for (int i = 0; i < src.fullData.size(); ++i) {
+                if (src.fullData.distance[i] > minMaxDist) break;
+                clipped.frame.push_back(src.fullData.frame[i]);
+                clipped.speed.push_back(src.fullData.speed[i]);
+                clipped.distance.push_back(src.fullData.distance[i]);
+                if (i < static_cast<int>(src.fullData.time_s.size()))
+                    clipped.time_s.push_back(src.fullData.time_s[i]);
+                if (i < static_cast<int>(src.fullData.accel.size()))
+                    clipped.accel.push_back(src.fullData.accel[i]);
+            }
+            m_analyzers[src.analyzerIndex]->replaceData(clipped);
+        } else {
+            m_analyzers[src.analyzerIndex]->replaceData(src.fullData);
         }
     }
+
     m_plot->refreshGraphData();
     m_plot->rescaleAxes();
     m_plot->replot();
-    if (!anyAlive && m_liveTimer)
+
+    // Phase 4: adaptive interval
+    if (anyGrew) {
+        m_liveInterval = 100;
+    } else {
+        m_liveInterval = std::min(m_liveInterval + 50, 500);
+    }
+
+    if (!anyAlive) {
+        // All done — show full data for all sources
+        for (auto &src : m_liveSources) {
+            if (src.fullData.size() > 0 && src.analyzerIndex < static_cast<int>(m_analyzers.size()))
+                m_analyzers[src.analyzerIndex]->replaceData(src.fullData);
+        }
+        m_plot->refreshGraphData();
+        m_plot->rescaleAxes();
+        m_plot->replot();
         m_liveTimer->stop();
+    } else {
+        m_liveTimer->setInterval(m_liveInterval);
+    }
 }

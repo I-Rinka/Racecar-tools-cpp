@@ -64,7 +64,10 @@ private:
     struct LiveSource {
         QPointer<ROISelector> roi;
         int analyzerIndex;
+        SpeedData fullData;
+        int lastSize = 0;
     };
     std::vector<LiveSource> m_liveSources;
     QTimer *m_liveTimer = nullptr;
+    int m_liveInterval = 100;
 };
