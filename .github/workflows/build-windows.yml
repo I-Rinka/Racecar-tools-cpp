@@ -2,6 +2,7 @@ name: Build Windows
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
 
@@ -24,9 +25,28 @@ jobs:
       - name: Build
         run: cmake --build build --config Release
 
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p package
+          cp build/Release/RacecarTools.exe package/
+          # Bundle Qt DLLs
+          if command -v windeployqt6 &>/dev/null; then
+            windeployqt6 --release package/RacecarTools.exe
+          elif [ -f "$Qt6_DIR/../../../bin/windeployqt.exe" ]; then
+            "$Qt6_DIR/../../../bin/windeployqt.exe" --release package/RacecarTools.exe
+          fi
+          cd package && 7z a ../RacecarTools-Windows.zip .
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: RacecarTools-Windows
-          path: build/Release/RacecarTools.exe
+          path: RacecarTools-Windows.zip
           if-no-files-found: warn
+
+      - name: Upload to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: RacecarTools-Windows.zip
