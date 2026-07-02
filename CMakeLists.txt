@@ -43,14 +43,31 @@ set(SOURCES
     src/widgets/DataEditor.cpp
 )
 
-add_executable(RacecarTools MACOSX_BUNDLE ${SOURCES})
+if(WIN32)
+    list(APPEND SOURCES resources/app.rc)
+endif()
+
+if(APPLE AND NOT ANDROID)
+    set(MACOSX_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/RacecarTools.icns")
+    set_source_files_properties(${MACOSX_ICON} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+    add_executable(RacecarTools MACOSX_BUNDLE ${SOURCES} ${MACOSX_ICON})
+else()
+    add_executable(RacecarTools MACOSX_BUNDLE ${SOURCES})
+endif()
 
 set_target_properties(RacecarTools PROPERTIES
     MACOSX_BUNDLE_BUNDLE_NAME "RacecarTools"
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.racecar.tools"
     MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
     MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+    MACOSX_BUNDLE_ICON_FILE "RacecarTools.icns"
 )
+
+if(ANDROID)
+    set_target_properties(RacecarTools PROPERTIES
+        QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android"
+    )
+endif()
 
 target_include_directories(RacecarTools PRIVATE src)
 target_link_libraries(RacecarTools PRIVATE
