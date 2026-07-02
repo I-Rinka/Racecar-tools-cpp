@@ -1,6 +1,6 @@
 #pragma once
 #include <QWidget>
-#include <QGridLayout>
+#include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QSplitter>
 #include <QPushButton>
@@ -34,7 +34,7 @@ private:
 
     PlotWidget *m_plot;
     QWidget *m_videoContainer;
-    QGridLayout *m_videoLayout;
+    QHBoxLayout *m_videoLayout;
     std::vector<VideoPlayer *> m_videos;
     std::vector<SDAnalyzer *> m_analyzers;
     std::vector<double> m_videoFps;

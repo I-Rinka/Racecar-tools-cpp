@@ -1,8 +1,10 @@
 #pragma once
 #include <QWidget>
 #include <QMediaPlayer>
-#include <QVideoWidget>
+#include <QVideoSink>
+#include <QVideoFrame>
 #include <QVBoxLayout>
+#include <QLabel>
 #include <QUrl>
 
 class VideoPlayer : public QWidget {
@@ -19,10 +21,12 @@ public:
 private slots:
     void onMediaStatusChanged(QMediaPlayer::MediaStatus status);
     void onPlaybackStateChanged(QMediaPlayer::PlaybackState state);
+    void onVideoFrameChanged(const QVideoFrame &frame);
 
 private:
     QMediaPlayer *m_player;
-    QVideoWidget *m_videoWidget;
+    QVideoSink *m_videoSink;
+    QLabel *m_display;
     double m_fps = 30.0;
     bool m_playing = false;
     bool m_mediaReady = false;

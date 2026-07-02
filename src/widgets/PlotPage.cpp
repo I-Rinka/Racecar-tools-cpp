@@ -17,7 +17,9 @@ PlotPage::PlotPage(QWidget *parent) : QWidget(parent) {
     mainLayout->addWidget(m_plot, 1);
 
     m_videoContainer = new QWidget(this);
-    m_videoLayout = new QGridLayout(m_videoContainer);
+    m_videoLayout = new QHBoxLayout(m_videoContainer);
+    m_videoLayout->setContentsMargins(0, 0, 0, 0);
+    m_videoLayout->setSpacing(4);
     mainLayout->addWidget(m_videoContainer, 2);
 
     m_syncTimer = new QTimer(this);
@@ -81,16 +83,11 @@ void PlotPage::refreshVideoLayout() {
         delete item;
     }
 
-    int count = static_cast<int>(m_videos.size());
-    if (count == 0) return;
-    int cols = (count >= 2) ? 2 : 1;
-    for (int i = 0; i < count; ++i) {
-        int row = i / cols, col = i % cols;
-        m_videoLayout->addWidget(m_videos[i], row, col);
+    for (auto *v : m_videos) {
+        v->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+        v->setMinimumSize(0, 0);
+        m_videoLayout->addWidget(v, 1);
     }
-    int rows = (count + cols - 1) / cols;
-    for (int r = 0; r < rows; ++r) m_videoLayout->setRowStretch(r, 1);
-    for (int c = 0; c < cols; ++c) m_videoLayout->setColumnStretch(c, 1);
 }
 
 void PlotPage::onSyncTick() {

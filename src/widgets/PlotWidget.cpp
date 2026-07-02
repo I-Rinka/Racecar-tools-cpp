@@ -30,12 +30,12 @@ PlotWidget::PlotWidget(QWidget *parent) : QCustomPlot(parent) {
 
     // distance difference: two vertical dashed lines + filled region + label
     m_distLine0 = new QCPItemStraightLine(this);
-    m_distLine0->setPen(QPen(QColor("#1f77b4"), 2, Qt::DashLine));
+    m_distLine0->setPen(QPen(QColor(31, 119, 180, 120), 1, Qt::DashLine));
     m_distLine0->setVisible(false);
     m_distLine0->setLayer("overlay");
 
     m_distLine1 = new QCPItemStraightLine(this);
-    m_distLine1->setPen(QPen(QColor("#ff7f0e"), 2, Qt::DashLine));
+    m_distLine1->setPen(QPen(QColor(255, 127, 14, 120), 1, Qt::DashLine));
     m_distLine1->setVisible(false);
     m_distLine1->setLayer("overlay");
 
@@ -72,6 +72,7 @@ void PlotWidget::addAnalyzer(SDAnalyzer *analyzer, const QColor &color) {
     pointGraph->setLineStyle(QCPGraph::lsNone);
     pointGraph->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssCircle, color, Qt::white, 8));
     pointGraph->removeFromLegend();
+    pointGraph->setLayer("overlay");
     m_pointGraphs.push_back(pointGraph);
 
     m_hoverCallbacks.push_back(nullptr);

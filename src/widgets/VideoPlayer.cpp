@@ -1,13 +1,23 @@
 #include "VideoPlayer.h"
+#include <QImage>
+#include <QPixmap>
 
 VideoPlayer::VideoPlayer(const QString &videoPath, QWidget *parent)
     : QWidget(parent) {
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
 
-    m_videoWidget = new QVideoWidget(this);
+    m_display = new QLabel(this);
+    m_display->setAlignment(Qt::AlignCenter);
+    m_display->setScaledContents(false);
+    m_display->setStyleSheet("background: black;");
+
+    m_videoSink = new QVideoSink(this);
+    connect(m_videoSink, &QVideoSink::videoFrameChanged,
+            this, &VideoPlayer::onVideoFrameChanged);
+
     m_player = new QMediaPlayer(this);
-    m_player->setVideoOutput(m_videoWidget);
+    m_player->setVideoSink(m_videoSink);
 
     connect(m_player, &QMediaPlayer::mediaStatusChanged,
             this, &VideoPlayer::onMediaStatusChanged);
@@ -16,8 +26,20 @@ VideoPlayer::VideoPlayer(const QString &videoPath, QWidget *parent)
 
     m_player->setSource(QUrl::fromLocalFile(videoPath));
 
-    layout->addWidget(m_videoWidget);
+    layout->addWidget(m_display);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+}
+
+void VideoPlayer::onVideoFrameChanged(const QVideoFrame &frame) {
+    QVideoFrame f = frame;
+    if (!f.isValid()) return;
+    f.map(QVideoFrame::ReadOnly);
+    QImage img = f.toImage();
+    f.unmap();
+    if (img.isNull()) return;
+    QPixmap pix = QPixmap::fromImage(img.scaled(
+        m_display->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    m_display->setPixmap(pix);
 }
 
 void VideoPlayer::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
