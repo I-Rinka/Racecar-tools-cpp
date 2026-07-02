@@ -47,12 +47,14 @@ if(WIN32)
     list(APPEND SOURCES resources/app.rc)
 endif()
 
-if(APPLE AND NOT ANDROID)
+if(ANDROID)
+    qt_add_executable(RacecarTools ${SOURCES})
+elseif(APPLE)
     set(MACOSX_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/RacecarTools.icns")
     set_source_files_properties(${MACOSX_ICON} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
     add_executable(RacecarTools MACOSX_BUNDLE ${SOURCES} ${MACOSX_ICON})
 else()
-    add_executable(RacecarTools MACOSX_BUNDLE ${SOURCES})
+    add_executable(RacecarTools ${SOURCES})
 endif()
 
 set_target_properties(RacecarTools PROPERTIES

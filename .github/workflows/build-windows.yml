@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -30,7 +33,6 @@ jobs:
         run: |
           mkdir -p package
           cp build/Release/RacecarTools.exe package/
-          # Bundle Qt DLLs
           if command -v windeployqt6 &>/dev/null; then
             windeployqt6 --release package/RacecarTools.exe
           elif [ -f "$Qt6_DIR/../../../bin/windeployqt.exe" ]; then
@@ -50,3 +52,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: RacecarTools-Windows.zip
+        env:
+          ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
