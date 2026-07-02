@@ -129,6 +129,17 @@ void SDAnalyzer::incCurrentIndex() {
         ++m_currentIndex;
 }
 
+void SDAnalyzer::replaceData(const SpeedData &data) {
+    m_data = data;
+    if (m_data.accel.empty() && !m_data.speed.empty())
+        m_data.accel = computeAccel(m_data.speed, m_data.distance);
+    buildDistanceMap();
+    if (m_data.size() > 0)
+        m_currentIndex = std::clamp(m_currentIndex, 0, m_data.size() - 1);
+    else
+        m_currentIndex = 0;
+}
+
 std::vector<double> SDAnalyzer::computeAccel(const std::vector<double> &speeds,
                                               const std::vector<double> &dists, int window) {
     std::vector<double> result(speeds.size());

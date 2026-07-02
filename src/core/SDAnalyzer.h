@@ -31,6 +31,7 @@ public:
     int getInitialFrame() const;
     double getFps() const;
     void incCurrentIndex();
+    void replaceData(const SpeedData &data);
 
     const SpeedData &data() const { return m_data; }
     const std::string &name() const { return m_data.name; }

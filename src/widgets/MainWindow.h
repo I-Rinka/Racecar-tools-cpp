@@ -1,12 +1,17 @@
 #pragma once
 #include <QMainWindow>
 #include <QTabWidget>
+#include <QTabBar>
+#include <QPoint>
 #include "core/SDAnalyzer.h"
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     explicit MainWindow(QWidget *parent = nullptr);
+
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override;
 
 private slots:
     void addPlotTab();
@@ -18,4 +23,5 @@ private:
     void onTabCloseRequested(int index);
 
     QTabWidget *m_tabs;
+    QPoint m_dragStartPos;
 };

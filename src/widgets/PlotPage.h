@@ -6,10 +6,13 @@
 #include <QPushButton>
 #include <QKeyEvent>
 #include <QTimer>
+#include <QPointer>
 #include <vector>
 #include "PlotWidget.h"
 #include "VideoPlayer.h"
 #include "core/SDAnalyzer.h"
+
+class ROISelector;
 
 class PlotPage : public QWidget {
     Q_OBJECT
@@ -18,6 +21,10 @@ public:
 
     void addInstance(const QString &csvPath, const QString &videoPath);
     void addInstanceByData(const QString &name, const SpeedData &data, const QString &videoPath);
+    void addLiveInstance(ROISelector *roi);
+
+signals:
+    void roiTabDropped(int tabIndex);
 
 protected:
     void dragEnterEvent(QDragEnterEvent *event) override;
@@ -27,6 +34,7 @@ protected:
 
 private slots:
     void onSyncTick();
+    void onLiveUpdate();
 
 private:
     void refreshVideoLayout();
@@ -41,4 +49,11 @@ private:
     bool m_playing = false;
     QString m_pendingCsv;
     QTimer *m_syncTimer;
+
+    struct LiveSource {
+        QPointer<ROISelector> roi;
+        int analyzerIndex;
+    };
+    std::vector<LiveSource> m_liveSources;
+    QTimer *m_liveTimer = nullptr;
 };

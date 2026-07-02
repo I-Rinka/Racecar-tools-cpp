@@ -1,4 +1,5 @@
 #include "PlotPage.h"
+#include "ROISelector.h"
 #include <QMimeData>
 #include <QFileInfo>
 #include <QDir>
@@ -111,11 +112,19 @@ void PlotPage::onSyncTick() {
 }
 
 void PlotPage::dragEnterEvent(QDragEnterEvent *event) {
-    if (event->mimeData()->hasUrls())
+    if (event->mimeData()->hasUrls() ||
+        event->mimeData()->hasFormat("application/x-racecar-tab-index"))
         event->acceptProposedAction();
 }
 
 void PlotPage::dropEvent(QDropEvent *event) {
+    if (event->mimeData()->hasFormat("application/x-racecar-tab-index")) {
+        int tabIdx = event->mimeData()->data("application/x-racecar-tab-index").toInt();
+        emit roiTabDropped(tabIdx);
+        event->acceptProposedAction();
+        return;
+    }
+
     for (auto &url : event->mimeData()->urls()) {
         QString path = url.toLocalFile();
         QFileInfo fi(path);
@@ -209,4 +218,53 @@ void PlotPage::keyReleaseEvent(QKeyEvent *event) {
         m_plot->setCtrlPressed(false);
     }
     QWidget::keyReleaseEvent(event);
+}
+
+void PlotPage::addLiveInstance(ROISelector *roi) {
+    SpeedData data = roi->getResult();
+    QString name = QFileInfo(roi->videoPath()).completeBaseName();
+
+    auto *analyzer = new SDAnalyzer(name.toStdString(), data);
+    m_analyzers.push_back(analyzer);
+
+    QColor color = COLORS[(m_analyzers.size() - 1) % 4];
+    m_plot->addAnalyzer(analyzer, color);
+
+    QString videoPath = roi->videoPath();
+    if (!videoPath.isEmpty()) {
+        double fps = analyzer->getFps();
+        auto *player = new VideoPlayer(videoPath, this);
+        m_videos.push_back(player);
+        m_videoFps.push_back(fps);
+        int initFrame = analyzer->getInitialFrame();
+        player->seekToFrame(initFrame, fps);
+        registerVideoHover(static_cast<int>(m_videos.size()) - 1);
+        refreshVideoLayout();
+    }
+
+    if (roi->isProcessing()) {
+        m_liveSources.push_back({roi, static_cast<int>(m_analyzers.size()) - 1});
+        if (!m_liveTimer) {
+            m_liveTimer = new QTimer(this);
+            connect(m_liveTimer, &QTimer::timeout, this, &PlotPage::onLiveUpdate);
+        }
+        m_liveTimer->start(500);
+    }
+}
+
+void PlotPage::onLiveUpdate() {
+    bool anyAlive = false;
+    for (auto &src : m_liveSources) {
+        if (src.roi.isNull() || !src.roi->isProcessing()) continue;
+        anyAlive = true;
+        SpeedData data = src.roi->getResult();
+        if (data.size() > 0 && src.analyzerIndex < static_cast<int>(m_analyzers.size())) {
+            m_analyzers[src.analyzerIndex]->replaceData(data);
+        }
+    }
+    m_plot->refreshGraphData();
+    m_plot->rescaleAxes();
+    m_plot->replot();
+    if (!anyAlive && m_liveTimer)
+        m_liveTimer->stop();
 }

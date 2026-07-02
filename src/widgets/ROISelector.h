@@ -57,6 +57,7 @@ public:
     void loadVideo(const QString &path);
     SpeedData getResult();
     QString videoPath() const { return m_videoPath; }
+    bool isProcessing() const { return m_processing; }
 
 signals:
     void processingFinished(const QString &name, const SpeedData &data, const QString &videoPath);
