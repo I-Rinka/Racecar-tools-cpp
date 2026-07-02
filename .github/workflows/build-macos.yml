@@ -21,16 +21,58 @@ jobs:
 
       - name: Configure
         run: |
-          export CMAKE_PREFIX_PATH="$(brew --prefix qt@6)"
-          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          QT_PREFIX="$(brew --prefix qt@6)"
+          export CMAKE_PREFIX_PATH="$QT_PREFIX"
+          cmake -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON
 
       - name: Build
         run: cmake --build build --config Release -j$(sysctl -n hw.ncpu)
 
+      - name: Bundle dependencies
+        run: |
+          QT_PREFIX="$(brew --prefix qt@6)"
+          BINARY="build/RacecarTools.app/Contents/MacOS/RacecarTools"
+
+          # Add Qt framework rpath so macdeployqt can resolve @rpath references
+          install_name_tool -add_rpath "$QT_PREFIX/lib" "$BINARY" 2>/dev/null || true
+
+          "$QT_PREFIX/bin/macdeployqt" build/RacecarTools.app -verbose=1
+
+          # Bundle non-Qt dylibs (OpenCV, Tesseract, Leptonica, etc.)
+          FRAMEWORKS_DIR="build/RacecarTools.app/Contents/Frameworks"
+          mkdir -p "$FRAMEWORKS_DIR"
+
+          copy_and_fix() {
+            local binary="$1"
+            for lib in $(otool -L "$binary" | grep -E '/opt/homebrew|/usr/local' | awk '{print $1}'); do
+              local base=$(basename "$lib")
+              if [ ! -f "$FRAMEWORKS_DIR/$base" ]; then
+                cp "$lib" "$FRAMEWORKS_DIR/$base" 2>/dev/null || continue
+                chmod 755 "$FRAMEWORKS_DIR/$base"
+                install_name_tool -id "@executable_path/../Frameworks/$base" "$FRAMEWORKS_DIR/$base"
+                # Recurse into this lib's dependencies
+                copy_and_fix "$FRAMEWORKS_DIR/$base"
+              fi
+              install_name_tool -change "$lib" "@executable_path/../Frameworks/$base" "$binary" 2>/dev/null || true
+            done
+          }
+
+          copy_and_fix "$BINARY"
+
+          # Fix cross-references between bundled libs
+          for f in "$FRAMEWORKS_DIR"/*.dylib; do
+            [ -f "$f" ] || continue
+            for lib in $(otool -L "$f" | grep -E '/opt/homebrew|/usr/local' | awk '{print $1}'); do
+              local base=$(basename "$lib")
+              install_name_tool -change "$lib" "@executable_path/../Frameworks/$base" "$f" 2>/dev/null || true
+            done
+          done
+
       - name: Package
         run: |
           cd build
-          zip -r RacecarTools-macOS.zip RacecarTools.app
+          zip -r -y RacecarTools-macOS.zip RacecarTools.app
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
