@@ -25,17 +25,24 @@ jobs:
         shell: pwsh
         run: |
           Invoke-WebRequest -Uri "https://github.com/opencv/opencv/releases/download/4.10.0/opencv-4.10.0-windows.exe" -OutFile opencv.exe
-          7z x opencv.exe -oopencv_extract -y
-          Write-Host "=== Looking for OpenCVConfig.cmake ==="
-          Get-ChildItem -Recurse opencv_extract -Filter "OpenCVConfig.cmake" | ForEach-Object { Write-Host $_.FullName }
-          Write-Host "=== Top-level structure ==="
-          Get-ChildItem opencv_extract
+          # Run the self-extractor (it's a 7z SFX)
+          Start-Process -FilePath "$PWD\opencv.exe" -ArgumentList "-o$PWD\opencv_out","-y" -Wait -NoNewWindow
+          Write-Host "=== Directory listing ==="
+          Get-ChildItem opencv_out -Recurse -Depth 2 | ForEach-Object { Write-Host $_.FullName }
+          Write-Host "=== OpenCVConfig.cmake ==="
+          Get-ChildItem -Recurse opencv_out -Filter "OpenCVConfig.cmake" | ForEach-Object { Write-Host $_.FullName }
 
       - name: Configure
         shell: pwsh
         run: |
-          $opencvDir = (Get-ChildItem -Recurse opencv_extract -Filter "OpenCVConfig.cmake" | Select-Object -First 1).DirectoryName
-          Write-Host "Using OpenCV_DIR=$opencvDir"
+          $configFile = Get-ChildItem -Recurse opencv_out -Filter "OpenCVConfig.cmake" | Select-Object -First 1
+          if (-not $configFile) {
+            Write-Host "ERROR: OpenCVConfig.cmake not found!"
+            Get-ChildItem opencv_out -Recurse -Depth 3
+            exit 1
+          }
+          $opencvDir = $configFile.DirectoryName
+          Write-Host "OpenCV_DIR = $opencvDir"
           cmake -B build -G "Visual Studio 17 2022" -A x64 `
             -DCMAKE_BUILD_TYPE=Release `
             -DOpenCV_DIR="$opencvDir"
@@ -49,12 +56,12 @@ jobs:
           New-Item -ItemType Directory -Force -Path package
           Copy-Item build/Release/RacecarTools.exe package/
 
-          # Copy OpenCV DLLs
-          Get-ChildItem -Recurse opencv_extract -Filter "*.dll" |
-            Where-Object { $_.FullName -match "x64" -and $_.FullName -notmatch "d\.dll$" } |
+          # Copy OpenCV DLLs (release only, x64)
+          Get-ChildItem -Recurse opencv_out -Filter "*.dll" |
+            Where-Object { $_.FullName -match "x64" -and $_.Name -notmatch "d\.dll$" } |
             Copy-Item -Destination package/
 
-          # Run windeployqt to bundle Qt DLLs
+          # Run windeployqt
           $windeployqt = Get-ChildItem -Recurse "$env:QT_ROOT_DIR" -Filter "windeployqt*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($windeployqt) {
             & $windeployqt.FullName --release --no-translations package/RacecarTools.exe
