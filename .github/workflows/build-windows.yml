@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
@@ -37,7 +37,7 @@ jobs:
           }
           $opencvDir = $configFile.DirectoryName
           Write-Host "OpenCV_DIR = $opencvDir"
-          cmake -B build -A x64 `
+          cmake -B build -G "Visual Studio 17 2022" -A x64 `
             -DCMAKE_BUILD_TYPE=Release `
             -DOpenCV_DIR="$opencvDir"
 
