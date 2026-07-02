@@ -42,7 +42,22 @@ jobs:
             -DOpenCV_DIR="$opencvDir"
 
       - name: Build
-        run: cmake --build build --config Release
+        shell: pwsh
+        run: |
+          cmake --build build --config Release 2>&1 | Tee-Object -FilePath build_output.txt
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "=== Build failed ==="
+            Get-Content build_output.txt | Select-Object -Last 80
+            exit 1
+          }
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build_output.txt
+          if-no-files-found: ignore
 
       - name: Package
         shell: pwsh
