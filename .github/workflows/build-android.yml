@@ -38,9 +38,10 @@ jobs:
 
       - name: Configure
         run: |
-          QT_ANDROID_DIR=$(echo "$CMAKE_PREFIX_PATH" | tr ':' '\n' | grep -i android | head -1)
+          QT_ANDROID_DIR="${QT_HOST_PATH%/*}/android_arm64_v8a"
           echo "Qt Android: $QT_ANDROID_DIR"
           echo "Qt Host: $QT_HOST_PATH"
+          ls "$QT_ANDROID_DIR/lib/cmake/Qt6/qt.toolchain.cmake"
           cmake -B build \
             -DCMAKE_TOOLCHAIN_FILE="$QT_ANDROID_DIR/lib/cmake/Qt6/qt.toolchain.cmake" \
             -DCMAKE_BUILD_TYPE=Release \
