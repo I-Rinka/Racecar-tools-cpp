@@ -35,9 +35,9 @@ jobs:
       - name: Install NDK and platform
         run: |
           sdkmanager "ndk;26.1.10909125" "platforms;android-34"
-          # Remove all broken android-36 platforms (ext18, ext19, etc.)
-          # whose android.jar is corrupt and causes aapt2 to fail
-          rm -rf "$ANDROID_HOME"/platforms/android-36*
+          # Remove all pre-installed platforms with corrupt android.jar
+          # (android-35-ext*, android-36-ext*, etc.) — keep only android-34
+          find "$ANDROID_HOME/platforms" -maxdepth 1 -type d -name 'android-*' ! -name 'android-34' -exec rm -rf {} +
 
       - name: Download OpenCV Android SDK
         run: |

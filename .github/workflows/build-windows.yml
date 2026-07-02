@@ -21,9 +21,17 @@ jobs:
           version: '6.7.*'
           modules: 'qtmultimedia'
 
-      - name: Configure
+      - name: Download OpenCV
+        shell: pwsh
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows
+          Invoke-WebRequest -Uri "https://github.com/opencv/opencv/releases/download/4.10.0/opencv-4.10.0-windows.exe" -OutFile opencv.exe
+          Start-Process -FilePath .\opencv.exe -ArgumentList "-o`"$PWD\opencv`" -y" -Wait
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release `
+            -DOpenCV_DIR="$PWD\opencv\opencv\build\x64\vc16\lib"
 
       - name: Build
         run: cmake --build build --config Release
@@ -34,17 +42,14 @@ jobs:
           New-Item -ItemType Directory -Force -Path package
           Copy-Item build/Release/RacecarTools.exe package/
 
-          # Copy vcpkg DLLs (OpenCV, Tesseract, etc.)
-          $vcpkgBin = "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows/bin"
-          if (Test-Path $vcpkgBin) {
-            Get-ChildItem "$vcpkgBin/*.dll" | Copy-Item -Destination package/
+          # Copy OpenCV DLLs
+          $opencvBin = "$PWD\opencv\opencv\build\x64\vc16\bin"
+          if (Test-Path $opencvBin) {
+            Get-ChildItem "$opencvBin\*.dll" | Copy-Item -Destination package/
           }
 
           # Run windeployqt to bundle Qt DLLs
-          $qtBinDir = Split-Path -Parent (Get-Command qmake -ErrorAction SilentlyContinue).Source 2>$null
-          if (-not $qtBinDir) {
-            $qtBinDir = "$env:QT_ROOT_DIR/bin"
-          }
+          $qtBinDir = "$env:QT_ROOT_DIR\bin"
           $windeployqt = Get-ChildItem -Path $qtBinDir -Filter "windeployqt*" -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($windeployqt) {
             & $windeployqt.FullName --release --no-translations package/RacecarTools.exe
