@@ -25,13 +25,16 @@ jobs:
         shell: pwsh
         run: |
           Invoke-WebRequest -Uri "https://github.com/opencv/opencv/releases/download/4.10.0/opencv-4.10.0-windows.exe" -OutFile opencv.exe
-          Start-Process -FilePath .\opencv.exe -ArgumentList "-o`"$PWD\opencv`" -y" -Wait
+          Start-Process -FilePath .\opencv.exe -ArgumentList "-o`"$PWD`" -y" -Wait
+          # Show structure for debugging
+          Get-ChildItem -Recurse opencv/build -Filter "OpenCVConfig.cmake" | ForEach-Object { $_.FullName }
 
       - name: Configure
         shell: pwsh
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release `
-            -DOpenCV_DIR="$PWD\opencv\opencv\build\x64\vc16\lib"
+          cmake -B build -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DOpenCV_DIR="$PWD\opencv\build"
 
       - name: Build
         run: cmake --build build --config Release
@@ -43,9 +46,14 @@ jobs:
           Copy-Item build/Release/RacecarTools.exe package/
 
           # Copy OpenCV DLLs
-          $opencvBin = "$PWD\opencv\opencv\build\x64\vc16\bin"
+          $opencvBin = "$PWD\opencv\build\x64\vc16\bin"
           if (Test-Path $opencvBin) {
             Get-ChildItem "$opencvBin\*.dll" | Copy-Item -Destination package/
+          }
+          # Also try bin directly
+          $opencvBin2 = "$PWD\opencv\build\bin\Release"
+          if (Test-Path $opencvBin2) {
+            Get-ChildItem "$opencvBin2\*.dll" | Copy-Item -Destination package/
           }
 
           # Run windeployqt to bundle Qt DLLs
