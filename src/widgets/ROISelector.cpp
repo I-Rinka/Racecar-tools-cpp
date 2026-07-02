@@ -367,6 +367,13 @@ void ROISelector::keyPressEvent(QKeyEvent *event) {
             m_paused = true;
             m_timer->stop();
             m_playBtn->setText(tr("▶ 播放"));
+            if (m_roiSelected) {
+                m_statusLabel->setText(tr("正在优化毛刺数据..."));
+                m_statusLabel->repaint();
+                m_processor->refineSpikes(m_videoPath.toStdString(),
+                    cv::Rect(m_roiRect.x(), m_roiRect.y(),
+                             m_roiRect.width(), m_roiRect.height()));
+            }
             m_processor->saveCSV(m_savePath.toStdString());
             m_statusLabel->setText(tr("已保存"));
             QMessageBox::information(this, tr("保存成功"),

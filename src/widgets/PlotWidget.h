@@ -27,6 +27,17 @@ public:
     void showDistanceDiff(double d0, double d1);
     void hideDistanceDiff();
     void clearDeltaTexts();
+    void setGraphVisible(int index, bool visible);
+    void setEditorMode(bool enabled);
+    bool editorMode() const { return m_editorMode; }
+
+    using SelectionCallback = std::function<void(double, double)>;
+    void setSelectionCallback(SelectionCallback cb) { m_selectionCallback = std::move(cb); }
+
+    using ClickCallback = std::function<void(double)>;
+    void setClickCallback(ClickCallback cb) { m_clickCallback = std::move(cb); }
+
+    void showPointAt(int analyzerIdx, int dataIdx);
 
 signals:
     void distanceHovered(double distance);
@@ -36,6 +47,7 @@ protected:
     void mouseReleaseEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
+    bool event(QEvent *event) override;
 
 private:
     void handleSelection(double x1, double x2);
@@ -65,4 +77,8 @@ private:
     QCPItemStraightLine *m_distLine1 = nullptr;
     QCPItemRect *m_distFill = nullptr;
     QCPItemText *m_distDiffLabel = nullptr;
+
+    bool m_editorMode = false;
+    SelectionCallback m_selectionCallback;
+    ClickCallback m_clickCallback;
 };

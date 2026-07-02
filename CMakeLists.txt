@@ -11,10 +11,14 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia MultimediaWidgets PrintS
 find_package(OpenCV REQUIRED COMPONENTS core imgproc videoio)
 
 # Tesseract (optional — disable OCR if not found)
-find_package(PkgConfig QUIET)
-if(PkgConfig_FOUND)
-    pkg_check_modules(TESSERACT tesseract)
-    pkg_check_modules(LEPTONICA lept)
+# Try CMake config first (vcpkg on Windows), then fall back to pkg-config (Homebrew on macOS)
+find_package(Tesseract QUIET CONFIG)
+if(NOT Tesseract_FOUND)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(TESSERACT tesseract)
+        pkg_check_modules(LEPTONICA lept)
+    endif()
 endif()
 
 # QCustomPlot (bundled)
@@ -39,7 +43,14 @@ set(SOURCES
     src/widgets/DataEditor.cpp
 )
 
-add_executable(RacecarTools ${SOURCES})
+add_executable(RacecarTools MACOSX_BUNDLE ${SOURCES})
+
+set_target_properties(RacecarTools PROPERTIES
+    MACOSX_BUNDLE_BUNDLE_NAME "RacecarTools"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "com.racecar.tools"
+    MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+)
 
 target_include_directories(RacecarTools PRIVATE src)
 target_link_libraries(RacecarTools PRIVATE
@@ -50,7 +61,10 @@ target_link_libraries(RacecarTools PRIVATE
     ${OpenCV_LIBS}
 )
 
-if(TESSERACT_FOUND)
+if(Tesseract_FOUND)
+    target_link_libraries(RacecarTools PRIVATE Tesseract::libtesseract)
+    target_compile_definitions(RacecarTools PRIVATE HAS_TESSERACT)
+elseif(TESSERACT_FOUND)
     target_include_directories(RacecarTools PRIVATE ${TESSERACT_INCLUDE_DIRS} ${LEPTONICA_INCLUDE_DIRS})
     target_link_directories(RacecarTools PRIVATE ${TESSERACT_LIBRARY_DIRS} ${LEPTONICA_LIBRARY_DIRS})
     target_link_libraries(RacecarTools PRIVATE ${TESSERACT_LIBRARIES} ${LEPTONICA_LIBRARIES})

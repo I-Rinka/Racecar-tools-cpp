@@ -38,11 +38,13 @@ private slots:
     void onSyncTick();
     void onLiveUpdate();
     void onEditCurve();
-    void onEditorClosed();
+    void onEditorSaved();
+    void onEditorCancelled();
 
 private:
     void refreshVideoLayout();
     void registerVideoHover(int index);
+    void closeEditor();
 
     PlotWidget *m_plot;
     QWidget *m_videoContainer;
@@ -60,6 +62,7 @@ private:
     DataEditor *m_editor = nullptr;
     VideoPlayer *m_editorVideo = nullptr;
     int m_editingIndex = -1;
+    SpeedData m_originalEditData;
 
     struct LiveSource {
         QPointer<ROISelector> roi;

@@ -5,9 +5,11 @@
 
 DataEditor::DataEditor(SpeedData &data, const std::vector<int> &indices,
                        std::function<void(const SpeedData &)> saveCallback,
+                       std::function<void()> cancelCallback,
                        QWidget *parent)
     : QWidget(parent), m_data(data), m_indices(indices),
-      m_saveCallback(std::move(saveCallback)) {
+      m_saveCallback(std::move(saveCallback)),
+      m_cancelCallback(std::move(cancelCallback)) {
     setWindowTitle(tr("编辑选中数据"));
     resize(720, 600);
 
@@ -33,6 +35,11 @@ DataEditor::DataEditor(SpeedData &data, const std::vector<int> &indices,
     connect(fillBtn, &QPushButton::clicked, this, &DataEditor::fillSelected);
     topLayout->addWidget(fillBtn);
 
+    m_resetFilterBtn = new QPushButton(tr("返回完整列表"), this);
+    m_resetFilterBtn->setVisible(false);
+    connect(m_resetFilterBtn, &QPushButton::clicked, this, &DataEditor::resetFilter);
+    topLayout->addWidget(m_resetFilterBtn);
+
     layout->addLayout(topLayout);
 
     m_table = new QTableWidget(static_cast<int>(m_indices.size()), 2, this);
@@ -52,14 +59,62 @@ DataEditor::DataEditor(SpeedData &data, const std::vector<int> &indices,
 
     auto *btnLayout = new QHBoxLayout();
     btnLayout->addStretch();
+    auto *cancelBtn = new QPushButton(tr("取消"), this);
+    connect(cancelBtn, &QPushButton::clicked, this, &DataEditor::cancelAndClose);
+    btnLayout->addWidget(cancelBtn);
     auto *saveBtn = new QPushButton(tr("保存"), this);
     connect(saveBtn, &QPushButton::clicked, this, &DataEditor::saveAndClose);
     btnLayout->addWidget(saveBtn);
     layout->addLayout(btnLayout);
+
+    setFocusPolicy(Qt::StrongFocus);
 }
 
 void DataEditor::registerHoverCallback(std::function<void(int)> cb) {
     m_hoverCallback = std::move(cb);
+}
+
+void DataEditor::scrollToRow(int row) {
+    if (row < 0 || row >= m_table->rowCount()) return;
+    m_table->setCurrentCell(row, 1);
+    m_table->scrollToItem(m_table->item(row, 1), QAbstractItemView::PositionAtCenter);
+    m_table->selectRow(row);
+}
+
+void DataEditor::ensureRowVisible(int row) {
+    if (row < 0 || row >= m_table->rowCount()) return;
+    if (m_table->isRowHidden(row)) return;
+    m_table->scrollToItem(m_table->item(row, 1), QAbstractItemView::PositionAtCenter);
+}
+
+void DataEditor::filterToRange(double distMin, double distMax) {
+    m_filtered = true;
+    m_resetFilterBtn->setVisible(true);
+    int firstVisible = -1;
+    for (int row = 0; row < static_cast<int>(m_indices.size()); ++row) {
+        int idx = m_indices[row];
+        double d = m_data.distance[idx];
+        bool inRange = (d >= distMin && d <= distMax);
+        m_table->setRowHidden(row, !inRange);
+        if (inRange && firstVisible < 0) firstVisible = row;
+    }
+    if (firstVisible >= 0)
+        scrollToRow(firstVisible);
+}
+
+void DataEditor::resetFilter() {
+    m_filtered = false;
+    m_resetFilterBtn->setVisible(false);
+    for (int row = 0; row < m_table->rowCount(); ++row)
+        m_table->setRowHidden(row, false);
+}
+
+void DataEditor::keyPressEvent(QKeyEvent *event) {
+    if (event->key() == Qt::Key_Escape && m_filtered) {
+        resetFilter();
+        return;
+    }
+    QWidget::keyPressEvent(event);
 }
 
 void DataEditor::onCellClicked(int row, int) {
@@ -94,6 +149,7 @@ void DataEditor::findNext() {
     for (int step = 0; step < total; ++step) {
         int linear = (start + step) % total;
         int r = linear / cols, c = linear % cols;
+        if (m_table->isRowHidden(r)) continue;
         auto *item = m_table->item(r, c);
         if (item && item->text() == text) {
             m_table->setCurrentCell(r, c);
@@ -109,14 +165,65 @@ void DataEditor::findNext() {
 void DataEditor::findOutstanding() {
     int rows = m_table->rowCount();
     int start = m_lastFindPos2 + 1;
-    for (int i = start; i < rows; ++i) {
-        auto *item = m_table->item(i, 1);
-        if (!item) continue;
+    if (start >= rows) start = 0;
+
+    auto getSpeed = [&](int row) -> double {
+        auto *item = m_table->item(row, 1);
+        if (!item) return -1;
         bool ok;
         double v = item->text().toDouble(&ok);
-        if (!ok || v <= 40.0 || v >= 500.0) {
+        return ok ? v : -1;
+    };
+
+    auto isSpike = [&](int row) -> bool {
+        double v = getSpeed(row);
+        if (v < 0) return true;
+        if (v <= 0.0 || v >= 500.0) return true;
+
+        // Find visible neighbors
+        int prev = -1, next = -1;
+        for (int j = row - 1; j >= 0 && j >= row - 5; --j) {
+            if (!m_table->isRowHidden(j)) { prev = j; break; }
+        }
+        for (int j = row + 1; j < rows && j <= row + 5; ++j) {
+            if (!m_table->isRowHidden(j)) { next = j; break; }
+        }
+
+        if (prev >= 0 && next >= 0) {
+            double vp = getSpeed(prev), vn = getSpeed(next);
+            if (vp > 0 && vn > 0) {
+                double expected = (vp + vn) / 2.0;
+                double diff = std::abs(v - expected);
+                double localScale = std::max(expected * 0.1, 10.0);
+                if (diff > localScale) return true;
+            }
+        } else if (prev >= 0) {
+            double vp = getSpeed(prev);
+            if (vp > 0 && std::abs(v - vp) > std::max(vp * 0.15, 15.0))
+                return true;
+        } else if (next >= 0) {
+            double vn = getSpeed(next);
+            if (vn > 0 && std::abs(v - vn) > std::max(vn * 0.15, 15.0))
+                return true;
+        }
+        return false;
+    };
+
+    for (int i = start; i < rows; ++i) {
+        if (m_table->isRowHidden(i)) continue;
+        if (isSpike(i)) {
             m_table->setCurrentCell(i, 1);
-            m_table->scrollToItem(item);
+            m_table->scrollToItem(m_table->item(i, 1));
+            m_lastFindPos2 = i;
+            return;
+        }
+    }
+    // Wrap around from beginning
+    for (int i = 0; i < start; ++i) {
+        if (m_table->isRowHidden(i)) continue;
+        if (isSpike(i)) {
+            m_table->setCurrentCell(i, 1);
+            m_table->scrollToItem(m_table->item(i, 1));
             m_lastFindPos2 = i;
             return;
         }
@@ -157,5 +264,8 @@ void DataEditor::saveAndClose() {
         }
     }
     if (m_saveCallback) m_saveCallback(m_data);
-    close();
+}
+
+void DataEditor::cancelAndClose() {
+    if (m_cancelCallback) m_cancelCallback();
 }

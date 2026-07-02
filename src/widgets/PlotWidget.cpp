@@ -1,5 +1,6 @@
 #include "PlotWidget.h"
 #include <QMouseEvent>
+#include <QNativeGestureEvent>
 #include <cmath>
 
 static const QColor COLORS[] = {
@@ -111,6 +112,14 @@ void PlotWidget::refreshGraphData() {
     replot();
 }
 
+void PlotWidget::showPointAt(int analyzerIdx, int dataIdx) {
+    if (analyzerIdx < 0 || analyzerIdx >= static_cast<int>(m_analyzers.size())) return;
+    auto &d = m_analyzers[analyzerIdx]->data();
+    if (dataIdx < 0 || dataIdx >= d.size()) return;
+    m_pointGraphs[analyzerIdx]->setData({d.distance[dataIdx]}, {d.speed[dataIdx]});
+    replot(QCustomPlot::rpQueuedReplot);
+}
+
 void PlotWidget::updatePlot() {
     for (size_t i = 0; i < m_analyzers.size(); ++i) {
         auto *a = m_analyzers[i];
@@ -204,8 +213,12 @@ void PlotWidget::mouseReleaseEvent(QMouseEvent *event) {
             double x2 = xAxis->pixelToCoord(event->pos().x());
             double x1 = m_selStartX;
             if (x1 > x2) std::swap(x1, x2);
-            if (x2 - x1 > 5.0)
+            if (x2 - x1 > 5.0) {
                 handleSelection(x1, x2);
+            } else if (m_editorMode && m_clickCallback) {
+                double clickDist = (x1 + x2) / 2.0;
+                m_clickCallback(clickDist);
+            }
             replot();
         }
     }
@@ -253,7 +266,30 @@ void PlotWidget::wheelEvent(QWheelEvent *event) {
         xAxis->setRange(cx - (cx - xr.lower) * factor, cx + (xr.upper - cx) * factor);
         yAxis->setRange(cy - (cy - yr.lower) * factor, cy + (yr.upper - cy) * factor);
         replot();
+    } else if (event->pixelDelta() != QPoint(0, 0)) {
+        double dx = -(event->pixelDelta().x()) * (xAxis->range().size() / width());
+        double dy = (event->pixelDelta().y()) * (yAxis->range().size() / height());
+        xAxis->moveRange(dx);
+        yAxis->moveRange(dy);
+        replot();
     }
+}
+
+bool PlotWidget::event(QEvent *ev) {
+    if (ev->type() == QEvent::NativeGesture) {
+        auto *ge = static_cast<QNativeGestureEvent *>(ev);
+        if (ge->gestureType() == Qt::ZoomNativeGesture) {
+            double factor = 1.0 - ge->value();
+            double cx = xAxis->pixelToCoord(ge->position().x());
+            double cy = yAxis->pixelToCoord(ge->position().y());
+            auto xr = xAxis->range(), yr = yAxis->range();
+            xAxis->setRange(cx - (cx - xr.lower) * factor, cx + (xr.upper - cx) * factor);
+            yAxis->setRange(cy - (cy - yr.lower) * factor, cy + (yr.upper - cy) * factor);
+            replot();
+            return true;
+        }
+    }
+    return QCustomPlot::event(ev);
 }
 
 // ---- Selection → time difference ----
@@ -282,7 +318,27 @@ void PlotWidget::clearDeltaTexts() {
     replot();
 }
 
+void PlotWidget::setGraphVisible(int index, bool visible) {
+    if (index >= 0 && index < static_cast<int>(m_graphs.size())) {
+        m_graphs[index]->setVisible(visible);
+        m_pointGraphs[index]->setVisible(visible);
+    }
+    replot();
+}
+
+void PlotWidget::setEditorMode(bool enabled) {
+    m_editorMode = enabled;
+    if (!enabled) {
+        m_selectionCallback = nullptr;
+        m_clickCallback = nullptr;
+    }
+}
+
 void PlotWidget::handleSelection(double x1, double x2) {
+    if (m_editorMode && m_selectionCallback) {
+        m_selectionCallback(x1, x2);
+        return;
+    }
     if (m_analyzers.size() < 2) return;
 
     // Remove existing entries that overlap with the new range

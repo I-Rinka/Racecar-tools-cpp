@@ -19,6 +19,8 @@ public:
     std::vector<std::tuple<int, double, double>> processBatch(
         const std::vector<std::pair<cv::Mat, int>> &frames);
 
+    void refineSpikes(const std::string &videoPath, const cv::Rect &roi);
+
     SpeedData getSpeedData() const;
     void saveCSV(const std::string &path);
     void restart();

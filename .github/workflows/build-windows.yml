@@ -17,13 +17,9 @@ jobs:
           version: '6.7.*'
           modules: 'qtmultimedia'
 
-      - name: Install vcpkg packages
-        run: |
-          vcpkg install opencv4:x64-windows tesseract:x64-windows
-
       - name: Configure
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows
 
       - name: Build
         run: cmake --build build --config Release

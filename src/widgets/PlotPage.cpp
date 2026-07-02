@@ -229,6 +229,9 @@ void PlotPage::keyReleaseEvent(QKeyEvent *event) {
 
 void PlotPage::onEditCurve() {
     int sel = m_plot->selectedIndex();
+    if (sel < 0 && m_analyzers.size() == 1) {
+        sel = 0;
+    }
     if (sel < 0 || sel >= static_cast<int>(m_analyzers.size())) {
         QMessageBox::information(this, tr("提示"), tr("请先点击选中一条曲线"));
         return;
@@ -236,7 +239,8 @@ void PlotPage::onEditCurve() {
 
     m_editingIndex = sel;
     auto *analyzer = m_analyzers[sel];
-    SpeedData &data = const_cast<SpeedData &>(analyzer->data());
+    SpeedData &data = analyzer->data();
+    m_originalEditData = data;
 
     std::vector<int> indices(data.size());
     std::iota(indices.begin(), indices.end(), 0);
@@ -244,20 +248,26 @@ void PlotPage::onEditCurve() {
     m_videoContainer->hide();
     m_editBtn->hide();
 
+    for (int i = 0; i < static_cast<int>(m_analyzers.size()); ++i) {
+        if (i != sel) m_plot->setGraphVisible(i, false);
+    }
+
+    m_plot->setEditorMode(true);
+    m_plot->registerHoverCallback(sel, nullptr);
+
     m_editorContainer = new QWidget(this);
     auto *editorLayout = new QHBoxLayout(m_editorContainer);
     editorLayout->setContentsMargins(0, 0, 0, 0);
 
     m_editor = new DataEditor(data, indices,
-        [this](const SpeedData &) { onEditorClosed(); }, this);
+        [this](const SpeedData &) { onEditorSaved(); },
+        [this]() { onEditorCancelled(); },
+        this);
 
-    // Video for this curve (reuse path from existing player or create new)
-    QString videoPath;
     if (sel < static_cast<int>(m_videos.size())) {
-        // Get the video source — we need to create a new player for the editor
-        // The video path isn't stored separately, so reuse the existing player
         m_editorVideo = m_videos[sel];
         m_editorVideo->setParent(m_editorContainer);
+        m_editorVideo->setZoomEnabled(true);
     } else {
         m_editorVideo = nullptr;
     }
@@ -266,23 +276,54 @@ void PlotPage::onEditCurve() {
     if (m_editorVideo)
         editorLayout->addWidget(m_editorVideo, 2);
 
-    // Insert editor container where video container was
     auto *mainLayout = qobject_cast<QVBoxLayout *>(layout());
     mainLayout->insertWidget(1, m_editorContainer, 2);
 
-    double fps = (sel < static_cast<int>(m_videoFps.size())) ? m_videoFps[sel] : 30.0;
-    m_editor->registerHoverCallback([this, fps](int idx) {
-        if (!m_editorVideo) return;
-        auto *analyzer = m_analyzers[m_editingIndex];
-        int frame = analyzer->data().frame[idx];
-        m_editorVideo->seekToFrame(frame, fps);
+    // Table cell click → read frame from CSV → seek video (OpenCV exact) → show chart point
+    m_editor->registerHoverCallback([this, sel](int idx) {
+        auto &data = m_analyzers[m_editingIndex]->data();
+        if (m_editorVideo && idx < static_cast<int>(data.frame.size())) {
+            m_editorVideo->seekToFrameExact(data.frame[idx]);
+        }
+        m_plot->showPointAt(sel, idx);
+    });
+
+    // Chart click → find nearest row → read frame from CSV → seek video (OpenCV exact)
+    m_plot->setClickCallback([this, sel](double dist) {
+        if (!m_editor) return;
+        auto &data = m_analyzers[m_editingIndex]->data();
+        int bestRow = 0;
+        double bestDiff = 1e18;
+        for (int i = 0; i < data.size(); ++i) {
+            double diff = std::abs(data.distance[i] - dist);
+            if (diff < bestDiff) { bestDiff = diff; bestRow = i; }
+        }
+        m_editor->scrollToRow(bestRow);
+        m_plot->showPointAt(sel, bestRow);
+        if (m_editorVideo && bestRow < static_cast<int>(data.frame.size())) {
+            m_editorVideo->seekToFrameExact(data.frame[bestRow]);
+        }
+    });
+
+    // Chart drag-select → filter table + show marker at midpoint
+    m_plot->setSelectionCallback([this, sel](double x1, double x2) {
+        if (!m_editor) return;
+        m_editor->filterToRange(x1, x2);
+        double mid = (x1 + x2) / 2.0;
+        auto &data = m_analyzers[m_editingIndex]->data();
+        int bestRow = 0;
+        double bestDiff = 1e18;
+        for (int i = 0; i < data.size(); ++i) {
+            double diff = std::abs(data.distance[i] - mid);
+            if (diff < bestDiff) { bestDiff = diff; bestRow = i; }
+        }
+        m_plot->showPointAt(sel, bestRow);
     });
 }
 
-void PlotPage::onEditorClosed() {
+void PlotPage::onEditorSaved() {
     if (m_editingIndex >= 0 && m_editingIndex < static_cast<int>(m_analyzers.size())) {
         auto &data = m_analyzers[m_editingIndex]->data();
-        // Recompute distance from speed after edits
         if (!data.speed.empty() && !data.time_s.empty()) {
             data.distance.resize(data.speed.size());
             data.distance[0] = 0;
@@ -293,12 +334,23 @@ void PlotPage::onEditorClosed() {
             }
         }
         m_analyzers[m_editingIndex]->replaceData(data);
-        m_plot->refreshGraphData();
-        m_plot->rescaleAxes();
-        m_plot->replot();
     }
+    closeEditor();
+}
 
-    if (m_editorVideo && m_editingIndex < static_cast<int>(m_videos.size())) {
+void PlotPage::onEditorCancelled() {
+    if (m_editingIndex >= 0 && m_editingIndex < static_cast<int>(m_analyzers.size())) {
+        m_analyzers[m_editingIndex]->replaceData(m_originalEditData);
+    }
+    closeEditor();
+}
+
+void PlotPage::closeEditor() {
+    int idx = m_editingIndex;
+
+    if (m_editorVideo && idx < static_cast<int>(m_videos.size())) {
+        m_editorVideo->resetZoom();
+        m_editorVideo->setZoomEnabled(false);
         m_editorVideo->setParent(m_videoContainer);
         m_editorVideo = nullptr;
     }
@@ -310,6 +362,19 @@ void PlotPage::onEditorClosed() {
         m_editorContainer = nullptr;
         m_editor = nullptr;
     }
+
+    for (int i = 0; i < static_cast<int>(m_analyzers.size()); ++i)
+        m_plot->setGraphVisible(i, true);
+    m_plot->setEditorMode(false);
+    m_plot->setClickCallback(nullptr);
+
+    // Restore original video-only hover callback
+    if (idx >= 0 && idx < static_cast<int>(m_videos.size()))
+        registerVideoHover(idx);
+
+    m_plot->refreshGraphData();
+    m_plot->rescaleAxes();
+    m_plot->replot();
 
     m_videoContainer->show();
     m_editBtn->show();

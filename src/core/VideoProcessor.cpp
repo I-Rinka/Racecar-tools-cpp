@@ -1,4 +1,6 @@
 #include "VideoProcessor.h"
+#include <opencv2/videoio.hpp>
+#include <opencv2/imgproc.hpp>
 #include <thread>
 #include <future>
 #include <algorithm>
@@ -90,6 +92,105 @@ double VideoProcessor::smartOCR(const cv::Mat &frame) {
     }
 
     return value > 0 ? value : tmplValue;
+}
+
+void VideoProcessor::refineSpikes(const std::string &videoPath, const cv::Rect &roi) {
+    int n = static_cast<int>(m_timeSpeed.size());
+    if (n < 5) return;
+
+    auto speed = [&](int i) -> double { return std::get<1>(m_timeSpeed[i]); };
+
+    // Phase 1: detect spikes — isolated deviations from neighbors
+    std::vector<bool> isSpike(n, false);
+
+    for (int i = 1; i < n - 1; ++i) {
+        double prev = speed(i - 1), curr = speed(i), next = speed(i + 1);
+
+        // Zero surrounded by non-zero values
+        if (curr <= 0 && prev > 10 && next > 10) {
+            isSpike[i] = true;
+            continue;
+        }
+
+        // Isolation criterion: curr sticks out from both sides
+        double dp = curr - prev, dn = curr - next;
+        if (dp * dn > 0) {
+            double avg = (prev + next) / 2.0;
+            double diff = std::abs(curr - avg);
+            if (diff > 8 || (avg > 1 && diff / avg > 0.08))
+                isSpike[i] = true;
+        }
+    }
+
+    // Median-based detection catches cluster members missed by isolation
+    for (int i = 2; i < n - 2; ++i) {
+        if (isSpike[i]) continue;
+        double vals[5] = {speed(i-2), speed(i-1), speed(i), speed(i+1), speed(i+2)};
+        std::sort(vals, vals + 5);
+        double med = vals[2];
+        double diff = std::abs(speed(i) - med);
+        if (med > 1 && diff > 15 && diff / med > 0.1)
+            isSpike[i] = true;
+    }
+
+    std::vector<int> spikeIdx;
+    for (int i = 0; i < n; ++i)
+        if (isSpike[i]) spikeIdx.push_back(i);
+
+    if (spikeIdx.empty()) return;
+
+    // Phase 2: interpolated values from nearest non-spike anchors
+    std::vector<double> interp(n);
+    for (int idx : spikeIdx) {
+        int left = idx - 1;
+        while (left >= 0 && isSpike[left]) --left;
+        int right = idx + 1;
+        while (right < n && isSpike[right]) ++right;
+
+        if (left >= 0 && right < n) {
+            double t = static_cast<double>(idx - left) / (right - left);
+            interp[idx] = speed(left) + t * (speed(right) - speed(left));
+        } else if (left >= 0) {
+            interp[idx] = speed(left);
+        } else if (right < n) {
+            interp[idx] = speed(right);
+        } else {
+            interp[idx] = speed(idx);
+        }
+    }
+
+    // Phase 3: re-OCR spike frames, fall back to interpolation
+    cv::VideoCapture cap(videoPath);
+    bool hasVideo = cap.isOpened();
+
+    for (int idx : spikeIdx) {
+        double bestValue = interp[idx];
+
+        if (hasVideo) {
+            int frameNum = std::get<2>(m_timeSpeed[idx]);
+            cap.set(cv::CAP_PROP_POS_FRAMES, frameNum);
+            cv::Mat frame;
+            if (cap.read(frame)) {
+                cv::Rect safeRoi = roi & cv::Rect(0, 0, frame.cols, frame.rows);
+                if (!safeRoi.empty()) {
+                    cv::Mat roiFrame = frame(safeRoi);
+                    double saved = m_lastSpeed;
+                    m_lastSpeed = interp[idx];
+                    double ocrValue = smartOCR(roiFrame);
+                    m_lastSpeed = saved;
+
+                    if (ocrValue > 0 &&
+                        std::abs(ocrValue - interp[idx]) < std::abs(speed(idx) - interp[idx])) {
+                        bestValue = ocrValue;
+                    }
+                }
+            }
+        }
+
+        std::get<1>(m_timeSpeed[idx]) = bestValue;
+    }
+
+    if (hasVideo) cap.release();
 }
 
 double VideoProcessor::processFrame(const cv::Mat &frame, int frameIndex) {
