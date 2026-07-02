@@ -26,53 +26,20 @@ jobs:
         run: |
           Invoke-WebRequest -Uri "https://github.com/opencv/opencv/releases/download/4.10.0/opencv-4.10.0-windows.exe" -OutFile opencv.exe
           Start-Process -FilePath "$PWD\opencv.exe" -ArgumentList "-o$PWD\opencv_out","-y" -Wait -NoNewWindow
-          Write-Host "=== Looking for OpenCVConfig.cmake ==="
-          $configs = Get-ChildItem -Recurse opencv_out -Filter "OpenCVConfig.cmake" -ErrorAction SilentlyContinue
-          foreach ($c in $configs) { Write-Host $c.FullName }
-          if (-not $configs) {
-            Write-Host "Not found in opencv_out, listing top dirs:"
-            Get-ChildItem opencv_out -ErrorAction SilentlyContinue
-            Write-Host "Maybe extracted to current dir?"
-            Get-ChildItem -Filter "opencv*" | Where-Object { $_.PSIsContainer }
-            $configs2 = Get-ChildItem -Recurse -Filter "OpenCVConfig.cmake" -ErrorAction SilentlyContinue
-            foreach ($c in $configs2) { Write-Host $c.FullName }
-          }
 
       - name: Configure
         shell: pwsh
         run: |
-          # Search broadly for OpenCVConfig.cmake
-          $configFile = Get-ChildItem -Recurse -Filter "OpenCVConfig.cmake" -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -notmatch "build[\\/]" -or $_.FullName -match "opencv" } |
-            Select-Object -First 1
+          $configFile = Get-ChildItem -Recurse opencv_out -Filter "OpenCVConfig.cmake" -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $configFile) {
-            Write-Host "ERROR: Cannot find OpenCVConfig.cmake anywhere!"
+            Write-Host "ERROR: Cannot find OpenCVConfig.cmake"
             exit 1
           }
           $opencvDir = $configFile.DirectoryName
           Write-Host "OpenCV_DIR = $opencvDir"
-
-          # Show cmake version and Qt location
-          cmake --version
-          Write-Host "QT_ROOT_DIR = $env:QT_ROOT_DIR"
-
-          cmake -B build -G "Visual Studio 17 2022" -A x64 `
+          cmake -B build -A x64 `
             -DCMAKE_BUILD_TYPE=Release `
-            -DOpenCV_DIR="$opencvDir" 2>&1 | Tee-Object -FilePath cmake_output.txt
-
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "=== CMake failed, showing full output ==="
-            Get-Content cmake_output.txt
-            exit 1
-          }
-
-      - name: Upload cmake log on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cmake-output
-          path: cmake_output.txt
-          if-no-files-found: ignore
+            -DOpenCV_DIR="$opencvDir"
 
       - name: Build
         run: cmake --build build --config Release
@@ -83,12 +50,10 @@ jobs:
           New-Item -ItemType Directory -Force -Path package
           Copy-Item build/Release/RacecarTools.exe package/
 
-          # Copy OpenCV DLLs (release only, x64)
-          Get-ChildItem -Recurse -Filter "*.dll" -Path . |
-            Where-Object { $_.FullName -match "opencv" -and $_.FullName -match "x64" -and $_.Name -notmatch "d\.dll$" } |
+          Get-ChildItem -Recurse opencv_out -Filter "*.dll" |
+            Where-Object { $_.FullName -match "x64" -and $_.Name -notmatch "d\.dll$" } |
             Copy-Item -Destination package/
 
-          # Run windeployqt
           $windeployqt = Get-ChildItem -Recurse "$env:QT_ROOT_DIR" -Filter "windeployqt*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($windeployqt) {
             & $windeployqt.FullName --release --no-translations package/RacecarTools.exe
