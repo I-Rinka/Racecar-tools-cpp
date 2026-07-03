@@ -61,13 +61,23 @@ jobs:
           }
           bundle_lib "$BINARY" 0
 
-          # Fix cross-references between bundled dylibs
+          # Fix cross-references between bundled dylibs (absolute paths AND @rpath refs)
           for f in "$FRAMEWORKS_DIR"/*.dylib; do
             [ -f "$f" ] || continue
-            for lib in $(otool -L "$f" | grep -E '/opt/homebrew|/usr/local' | awk '{print $1}'); do
+            for lib in $(otool -L "$f" | grep -E '/opt/homebrew|/usr/local|@rpath/' | awk '{print $1}'); do
               base=$(basename "$lib")
-              install_name_tool -change "$lib" "@executable_path/../Frameworks/$base" "$f" 2>/dev/null || true
+              if [ -f "$FRAMEWORKS_DIR/$base" ]; then
+                install_name_tool -change "$lib" "@executable_path/../Frameworks/$base" "$f" 2>/dev/null || true
+              fi
             done
+          done
+
+          # Also fix @rpath references in the main binary
+          for lib in $(otool -L "$BINARY" | grep '@rpath/' | awk '{print $1}'); do
+            base=$(basename "$lib")
+            if [ -f "$FRAMEWORKS_DIR/$base" ]; then
+              install_name_tool -change "$lib" "@executable_path/../Frameworks/$base" "$BINARY" 2>/dev/null || true
+            fi
           done
 
           # Re-sign everything (install_name_tool invalidates signatures)
