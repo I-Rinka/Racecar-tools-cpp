@@ -63,10 +63,31 @@ jobs:
       - name: Build APK
         run: cmake --build build --target apk
 
-      - name: Find APK
+      - name: Sign APK
         run: |
+          # Generate a debug keystore for signing
+          keytool -genkeypair -v -keystore debug.keystore \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass android -keypass android \
+            -dname "CN=Debug,OU=Debug,O=Debug,L=Debug,S=Debug,C=US"
+
+          # Find the unsigned APK
           APK=$(find build -name "*.apk" -not -path "*/intermediates/*" | head -1)
-          cp "$APK" RacecarTools-Android.apk
+          echo "Found APK: $APK"
+
+          # Align the APK
+          ZIPALIGN=$(find "$ANDROID_HOME" -name "zipalign" -type f | head -1)
+          if [ -n "$ZIPALIGN" ]; then
+            "$ZIPALIGN" -f 4 "$APK" aligned.apk
+          else
+            cp "$APK" aligned.apk
+          fi
+
+          # Sign with apksigner
+          APKSIGNER=$(find "$ANDROID_HOME" -name "apksigner" -type f | head -1)
+          "$APKSIGNER" sign --ks debug.keystore --ks-pass pass:android \
+            --key-pass pass:android --ks-key-alias androiddebugkey \
+            --out RacecarTools-Android.apk aligned.apk
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
